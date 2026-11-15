@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-NFL PPR rankings from Underdog Fantasy pick'em lines, compared with Sleeper Picks.
+NFL player lines from Underdog Fantasy and Sleeper Picks, with FantasyPros' consensus projections.
 
-Pulls every live NFL prop from Underdog, turns each player's lines + odds into
-a projected full-PPR score, ranks everyone, and writes a spreadsheet.
+Pulls every live NFL prop from Underdog and Sleeper and FantasyPros' published PPR projections, lays them
+out side by side, ranks players by a published fantasy-points number, and writes a spreadsheet + web page.
+The script makes no projections of its own.
 
 Standard library only -- no pip installs needed:
 
@@ -12,8 +13,8 @@ Standard library only -- no pip installs needed:
     python3 ppr_rankings.py -o week11.xlsx  # custom output name
 
 Sheets (also written as CSV files):
-  * PPR Rankings        - one row per player, with a PPR projection from each site's lines (and their
-                          average, used for the rank) and every stat's line, odds and expected value per site
+  * PPR Rankings        - one row per player: every stat's line and odds per site and FantasyPros'
+                          projection, ranked by Sleeper's Fantasy Points line (PPR)
   * Odds Comparison     - every prop from both sites, one row per player + stat, side by side
   * Underdog Props      - every NFL line on Underdog with all its price fields
   * Sleeper Props       - every NFL line on Sleeper Picks (payouts, pick counts, recent results)
@@ -25,18 +26,17 @@ import argparse
 import csv
 import io
 import json
-import math
 import os
 import sys
 import urllib.request
 import webbrowser
 import zipfile
 from datetime import datetime
-from statistics import NormalDist
 from xml.sax.saxutils import escape
 
 from fantasypros_scraper import STATS as FANTASYPROS_STATS
 from fantasypros_scraper import FantasyProsScraper
+from history import save_snapshot
 from sleeper_scraper import SleeperScraper
 
 API_URL = "https://api.underdogfantasy.com/v1/over_under_lines"
@@ -48,25 +48,8 @@ HEADERS = {
 
 POSITIONS = {"QB", "RB", "WR", "TE"}
 
-# Full-PPR scoring
-PPR = {
-    "passing_yds": 0.04,
-    "passing_tds": 4,
-    "passing_ints": -2,
-    "rushing_yds": 0.1,
-    "receiving_yds": 0.1,
-    "receiving_rec": 1,
-    "rush_rec_tds": 6,
-    "fumbles_lost": -2,
-}
-
-# Stats modelled as counts (Poisson) vs yardage (normal around the line)
-COUNT_STATS = {"receiving_rec", "passing_tds", "passing_ints", "rush_rec_tds", "fumbles_lost"}
-YARD_STATS = {"passing_yds", "rushing_yds", "receiving_yds", "rush_rec_yds", "passing_and_rushing_yds"}
-YARD_SD_RATIO = 0.45  # rough game-to-game spread of yardage as a fraction of the line
-
 # Stat column groups in the rankings, in display order: (stat key, label). Each gets Line / Over / Under
-# per site, plus "Exp" (expected value used for the projection) for stats that feed PPR scoring.
+# per site (plus the no-vig probability for Anytime TD) and FantasyPros' projected value where it has one.
 STAT_BANDS = [
     ("fantasy_points", "Fantasy Pts"),
     ("passing_yds", "Pass Yds"),
@@ -87,11 +70,11 @@ STAT_BANDS = [
     ("rush_rec_tds", "Anytime TD"),
     ("fumbles_lost", "Fumbles Lost"),
 ]
-EXP_STATS = set(PPR)
 SITES = (("UD", "Underdog"), ("SL", "Sleeper"), ("FP", "FantasyPros"))
-NO_TD_SOURCE = "Props, no TD line"
-# What each site's Fantasy Points line needs added per expected catch to become full PPR
-FP_TO_PPR_PER_REC = {"UD": 0.5, "SL": 0.0}
+# Published fantasy-points numbers the rank can use, in order of preference (first loaded source wins)
+RANK_BASES = (("SL", "Fantasy Pts SL Line", "Sleeper Fantasy Pts line (PPR)"),
+              ("FP", "Fantasy Pts FP Proj", "FantasyPros projection (PPR)"),
+              ("UD", "Fantasy Pts UD Line", "Underdog Fantasy Pts line (½PPR)"))
 # Underdog scores Fantasy Points half-PPR; Sleeper's line fits full PPR -- so their lines aren't directly comparable
 FANTASY_POINTS_LABEL = "Fantasy Points (UD ½PPR, SL PPR)"
 
@@ -117,42 +100,6 @@ def no_vig_over_prob(over_american, under_american):
     if pu is not None:
         return max(1 - pu / 1.05, 0.01)
     return None
-
-
-def poisson_sf(line, lam):
-    """P(X > line) for X ~ Poisson(lam)."""
-    k_max = math.floor(line)
-    cdf, term = 0.0, math.exp(-lam)
-    for k in range(k_max + 1):
-        if k > 0:
-            term *= lam / k
-        cdf += term
-    return 1 - cdf
-
-
-def poisson_mean_for(line, p_over):
-    """Find the Poisson mean whose P(X > line) equals p_over (bisection)."""
-    p_over = min(max(p_over, 0.001), 0.999)
-    lo, hi = 1e-6, max(10.0, line * 4 + 10)
-    for _ in range(100):
-        mid = (lo + hi) / 2
-        if poisson_sf(line, mid) < p_over:
-            lo = mid
-        else:
-            hi = mid
-    return (lo + hi) / 2
-
-
-def project(stat, line, p_over):
-    """Expected value of a stat given its line and no-vig over probability."""
-    if p_over is None:
-        return line
-    if stat in COUNT_STATS:
-        return poisson_mean_for(line, p_over)
-    if stat in YARD_STATS:
-        z = NormalDist().inv_cdf(min(max(p_over, 0.01), 0.99))
-        return max(line + z * YARD_SD_RATIO * line, 0.0)
-    return line
 
 
 # --------------------------------------------------------------------------- #
@@ -353,33 +300,9 @@ def team_and_opponent(game, team_id):
     return "", ""
 
 
-def project_site(stats, fp_to_ppr_per_rec):
-    """One site's lines -> (expected stat values, projected PPR or None, source)."""
-    proj = {k: project(k, v["line"], v["p_over"]) for k, v in stats.items()}
-
-    # Derive missing components from combo lines when possible
-    if "rushing_yds" not in proj:
-        if "rush_rec_yds" in proj and "receiving_yds" in proj:
-            proj["rushing_yds"] = max(proj["rush_rec_yds"] - proj["receiving_yds"], 0)
-        elif "passing_and_rushing_yds" in proj and "passing_yds" in proj:
-            proj["rushing_yds"] = max(proj["passing_and_rushing_yds"] - proj["passing_yds"], 0)
-    if "receiving_yds" not in proj and "rush_rec_yds" in proj and "rushing_yds" in stats:
-        proj["receiving_yds"] = max(proj["rush_rec_yds"] - proj["rushing_yds"], 0)
-
-    if {"passing_yds", "rushing_yds", "receiving_yds", "receiving_rec"} & proj.keys():
-        # Without an anytime-TD line the projection has no touchdown points, so it runs low -- say so
-        source = "Props" if "rush_rec_tds" in stats else NO_TD_SOURCE
-        return proj, sum(PPR[k] * proj[k] for k in PPR if k in proj), source
-    fp = stats.get("fantasy_points")
-    if fp:  # no stat props: fall back to the site's own Fantasy Points line, converted to full PPR
-        return proj, fp["line"] + fp_to_ppr_per_rec * proj.get("receiving_rec", 0), "Fantasy Pts line"
-    return proj, None, ""
-
-
 def build_rankings(by_app, sleeper=None, fantasypros=None):
-    """One row per offensive player on any site, with a PPR projection per site (and their average) and every
-    stat per site: Underdog/Sleeper line, odds and expected value; FantasyPros' projected value.
-    Ranked by the average of the available projections."""
+    """One row per offensive player on any source: every stat's line / odds per site and FantasyPros'
+    projected value. Ranked by the first available published fantasy-points number (see RANK_BASES)."""
     sites = [code for code, _ in SITES if code == "UD" or (code == "SL" and sleeper) or (code == "FP" and fantasypros)]
     players = []  # (base info, {site: stats}, FantasyPros projection or None)
     seen_sleeper_ids, seen_fp = set(), set()
@@ -392,6 +315,11 @@ def build_rankings(by_app, sleeper=None, fantasypros=None):
             return proj
         return None
 
+    def info_for(name, pos, team):
+        g = team_games.get(team, {})
+        return {"name": name, "pos": pos, "team": team, "opp": g.get("opp", ""),
+                "game": g.get("game", ""), "kickoff": g.get("kickoff", "")}
+
     for info in by_app.values():
         if info["pos"] not in POSITIONS:
             continue
@@ -402,12 +330,6 @@ def build_rankings(by_app, sleeper=None, fantasypros=None):
                 seen_sleeper_ids.add(pid)
                 site_stats["SL"] = sleeper_site_stats(sleeper.lines_for_id(pid))
         players.append((info, site_stats, fp_for(info["name"], info["team"])))
-
-    def info_for(name, pos, team):
-        g = team_games.get(team, {})
-        return {"name": name, "pos": pos, "team": team, "opp": g.get("opp", ""),
-                "game": g.get("game", ""), "kickoff": g.get("kickoff", "")}
-
     if sleeper:  # players only Sleeper offers
         for pid, p in sleeper.players.items():
             if pid in seen_sleeper_ids or p["position"] not in POSITIONS or not sleeper.lines_for_id(pid):
@@ -421,30 +343,21 @@ def build_rankings(by_app, sleeper=None, fantasypros=None):
                 info["opp"] = info["opp"] or proj["opp"]   # game may be off Underdog already (e.g. kicked off)
                 players.append((info, {}, proj))
 
+    band_keys = {key for key, _ in STAT_BANDS}
     rows = []
     for info, site_stats, fp in players:
-        results = {site: project_site(site_stats.get(site, {}), FP_TO_PPR_PER_REC[site])
-                   for site in sites if site != "FP"}
-        if "FP" in sites:
-            results["FP"] = (fp["stats"], fp["fpts"], "FantasyPros consensus") if fp else ({}, None, "")
-        projections = [results[s][1] for s in sites if results[s][1] is not None]
-        if not projections:
-            continue  # nothing usable (e.g. only a 1Q line)
+        has_data = any(band_keys & site_stats.get(s, {}).keys() for s in ("UD", "SL")) or fp is not None
+        if not has_data:
+            continue  # nothing to show (e.g. only a 1Q line)
         row = {
             "Player": info["name"], "Pos": info["pos"], "Team": info["team"], "Opp": info["opp"],
             "Game": info["game"], "Kickoff (UTC)": info["kickoff"],
         }
-        for site in sites:
-            ppr = results[site][1]
-            row[f"{site} Proj PPR"] = round(ppr, 2) if ppr is not None else ""
-        row["Avg Proj PPR"] = round(sum(projections) / len(projections), 2)
-        for site in sites:
-            row[f"{site} Proj Source"] = results[site][2]
         for key, label in STAT_BANDS:
             for site in sites:
-                if site == "FP":  # a projection, not a line: one value per stat
+                if site == "FP":  # FantasyPros publishes a projection, not a line: one value per stat
                     if key in FANTASYPROS_STATS:
-                        row[f"{label} FP Proj"] = results["FP"][0].get(key, "")
+                        row[f"{label} FP Proj"] = fp["stats"].get(key, "") if fp else ""
                     continue
                 v = site_stats.get(site, {}).get(key)
                 row[f"{label} {site} Line"] = v["line"] if v else ""
@@ -452,16 +365,19 @@ def build_rankings(by_app, sleeper=None, fantasypros=None):
                 row[f"{label} {site} Under"] = fmt_american(v["under"]) if v else ""
                 if key == "rush_rec_tds":
                     row[f"{label} {site} %"] = pct(v["p_over"]) if v else ""
-                if key in EXP_STATS:
-                    exp = results[site][0].get(key)
-                    row[f"{label} {site} Exp"] = round(exp, 2) if exp is not None else ""
         rows.append(row)
 
-    rows.sort(key=lambda r: r["Avg Proj PPR"], reverse=True)
-    pos_rank = {}
-    for i, r in enumerate(rows, 1):
+    # Rank by the preferred published fantasy-points number; players without it follow, unranked
+    bases = [col for site, col, _ in RANK_BASES if site in sites]
+    rows.sort(key=lambda r: [-(r[c] if r.get(c, "") != "" else -1e9) for c in bases])
+    pos_rank, n = {}, 0
+    for r in rows:
+        if r.get(bases[0], "") == "":
+            r["Rank"] = r["Pos Rank"] = ""
+            continue
+        n += 1
         pos_rank[r["Pos"]] = pos_rank.get(r["Pos"], 0) + 1
-        r["Rank"] = i
+        r["Rank"] = n
         r["Pos Rank"] = f"{r['Pos']}{pos_rank[r['Pos']]}"
     order = ["Rank", "Pos Rank"]
     return [{k: r[k] for k in order + [c for c in r if c not in order]} for r in rows]
@@ -596,6 +512,8 @@ def main():
     ap.add_argument("--open", action="store_true", help="open the interactive HTML page in your browser")
     ap.add_argument("--no-sleeper", action="store_true", help="skip pulling Sleeper lines")
     ap.add_argument("--no-fantasypros", action="store_true", help="skip pulling FantasyPros projections")
+    ap.add_argument("--no-history", action="store_true",
+                    help="don't save this run to history/snapshots (used by projected_vs_actual.py)")
     args = ap.parse_args()
 
     print("Fetching Underdog lines...")
@@ -625,9 +543,17 @@ def main():
             print(f"Warning: couldn't load FantasyPros projections ({e}); continuing without FantasyPros")
 
     rankings = build_rankings(by_app, sleeper, fantasypros)
-    counts = ", ".join(f"{sum(1 for r in rankings if r.get(f'{c} Proj PPR', '') != '')} {name}"
-                       for c, name in SITES if f"{c} Proj PPR" in rankings[0])
-    print(f"Ranked {len(rankings)} players (projections: {counts})")
+    basis = next(label for site, col, label in RANK_BASES if rankings and col in rankings[0])
+    print(f"{len(rankings)} players; ranked by {basis} ({sum(1 for r in rankings if r['Rank'] != '')} have it)")
+
+    if not args.no_history:
+        try:
+            state = (sleeper or SleeperScraper()).fetch_state()
+        except Exception as e:  # noqa: BLE001 - the week can be worked out later from kickoffs
+            print(f"Warning: couldn't load the NFL season state ({e}); saving the snapshot without it")
+            state = {}
+        print(f"Saved snapshot {os.path.relpath(save_snapshot(rankings, state))} (for projected_vs_actual.py)")
+
     comparison = build_comparison(by_app, sleeper)
     flat.sort(key=lambda r: (r["Kickoff (UTC)"], r["Game"], r["Player"], r["Stat"]))
 
@@ -641,9 +567,11 @@ def main():
     print(f"Wrote {args.output}  (sheets: {', '.join(n for n, _ in sheets)})")
 
     html_path = os.path.splitext(args.output)[0] + ".html"
-    meta = {"sites": [c for c, _ in SITES if f"{c} Proj PPR" in rankings[0]],
-            "bands": [{"key": k, "label": label, "exp": k in EXP_STATS, "pct": k == "rush_rec_tds",
-                       "fp": k in FANTASYPROS_STATS} for k, label in STAT_BANDS],
+    meta = {"sites": [c for c, _ in SITES if any(k.startswith("Fantasy Pts " + c) for k in rankings[0])],
+            "bands": [{"key": k, "label": label, "pct": k == "rush_rec_tds", "fp": k in FANTASYPROS_STATS}
+                      for k, label in STAT_BANDS],
+            "rank_bases": [{"site": site, "key": col, "label": label} for site, col, label in RANK_BASES
+                           if rankings and col in rankings[0]],
             "fantasypros_week": fantasypros.week if fantasypros else None}
     write_html(html_path, rankings, comparison, meta)
     print(f"Wrote {html_path}  (interactive: rankings + odds comparison)")
@@ -654,9 +582,10 @@ def main():
             write_csv(f"{base}{suffix}.csv", rows)
         print(f"Wrote {len(sheets)} CSV files ({base}*.csv)")
 
-    print(f"\nTop 15 ({datetime.now():%Y-%m-%d %H:%M}):")
-    for r in rankings[:15]:
-        print(f"{r['Rank']:>3}. {r['Player']:<24} {r['Pos Rank']:<6} {r['Team'] or '':<4} vs {r['Opp'] or '':<4} {r['Avg Proj PPR']:>6.2f}")
+    rank_col = next(col for _, col, _ in RANK_BASES if rankings and col in rankings[0])
+    print(f"\nTop 15 by {rank_col} ({datetime.now():%Y-%m-%d %H:%M}):")
+    for r in [r for r in rankings if r["Rank"] != ""][:15]:
+        print(f"{r['Rank']:>3}. {r['Player']:<24} {r['Pos Rank']:<6} {r['Team'] or '':<4} vs {r['Opp'] or '':<4} {r[rank_col]:>6}")
 
     if args.open:
         webbrowser.open("file://" + os.path.abspath(html_path))

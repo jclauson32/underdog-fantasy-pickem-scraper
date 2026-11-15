@@ -72,6 +72,22 @@ def multiplier_to_american(multiplier):
     return f"+{v}" if v > 0 else str(v)
 
 
+def stats_row(raw):
+    """One player's actual week from the stats feed -> compact dict, or None if he didn't play."""
+    stats = raw.get("stats") or {}
+    player = raw.get("player") or {}
+    if not stats.get("gp") or not player.get("last_name"):
+        return None
+    return {
+        "player_id": str(raw.get("player_id")),
+        "name": f"{player.get('first_name', '')} {player['last_name']}".strip(),
+        "position": player.get("position"),
+        "team": raw.get("team") or player.get("team"),
+        "opponent": raw.get("opponent"),
+        "stats": {k: v for k, v in stats.items() if isinstance(v, (int, float))},
+    }
+
+
 class SleeperScraper:
     def __init__(self, timeout=30):
         self.config = None
@@ -98,6 +114,15 @@ class SleeperScraper:
     def fetch_data(self):
         """Raw Sleeper Picks lines (all sports; process_data keeps NFL)."""
         return self._get_json(self.config["sleeper_lines_url"])
+
+    def fetch_state(self):
+        """Current NFL season state: {"season", "week", "season_type", "season_start_date", ...}."""
+        return self._get_json(self.config["sleeper_state_url"])
+
+    def fetch_stats(self, season, week, season_type="regular"):
+        """Actual box-score stats for a completed week (QB/RB/WR/TE), from Sleeper's public stats feed."""
+        url = self.config["sleeper_stats_url"].format(season=season, week=week, season_type=season_type)
+        return [stats_row(r) for r in self._get_json(url) if stats_row(r)]
 
     def fetch_players(self):
         """Sleeper's full NFL player list (~15 MB), cached on disk for a day. Lines only carry player ids."""

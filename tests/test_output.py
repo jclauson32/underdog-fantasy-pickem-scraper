@@ -12,13 +12,14 @@ from unittest import mock
 from xml.dom import minidom
 
 import fantasypros_scraper
+import history
 import ppr_rankings
 import sleeper_scraper
 from ppr_rankings import write_csv, write_html, write_xlsx
 from tests import fixtures
 
-ROWS = [{"Rank": 1, "Player": "A & B <x>", "Proj PPR": 12.5, "Note": ""},
-        {"Rank": 2, "Player": "</script><b>", "Proj PPR": 3, "Note": "ok"}]
+ROWS = [{"Rank": 1, "Player": "A & B <x>", "Line": 12.5, "Note": ""},
+        {"Rank": 2, "Player": "</script><b>", "Line": 3, "Note": "ok"}]
 
 
 class Writers(unittest.TestCase):
@@ -55,7 +56,7 @@ class Writers(unittest.TestCase):
         with open(self.path("t.csv"), newline="", encoding="utf-8") as f:
             back = list(csv.DictReader(f))
         self.assertEqual(back[0]["Player"], "A & B <x>")
-        self.assertEqual(back[1]["Proj PPR"], "3")
+        self.assertEqual(back[1]["Line"], "3")
 
     def test_html_embeds_data_safely(self):
         write_html(self.path("t.html"), ROWS, [], {"note": "x"})
@@ -74,6 +75,9 @@ class FullRun(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.out = os.path.join(self.tmp.name, "out.xlsx")
+        hist = mock.patch.object(history, "HISTORY_DIR", os.path.join(self.tmp.name, "history"))
+        hist.start()
+        self.addCleanup(hist.stop)
         cache = mock.patch.object(sleeper_scraper, "PLAYERS_CACHE", os.path.join(self.tmp.name, "players.json"))
         cache.start()
         self.addCleanup(cache.stop)
@@ -81,6 +85,7 @@ class FullRun(unittest.TestCase):
     def run_main(self, sleeper_get, fantasypros_down=False):
         config = sleeper_scraper.SleeperScraper().config
         routes = {config["sleeper_lines_url"]: fixtures.sleeper_lines(),
+                  config["sleeper_state_url"]: fixtures.SLEEPER_STATE,
                   config["sleeper_players_url"]: fixtures.SLEEPER_PLAYERS}
 
         def default_get(_self, url):
@@ -113,7 +118,7 @@ class FullRun(unittest.TestCase):
 
     def test_writes_every_output(self):
         log = self.run_main(None)
-        self.assertIn("Ranked 8 players (projections: 5 Underdog, 4 Sleeper, 4 FantasyPros)", log)
+        self.assertIn("8 players; ranked by Sleeper Fantasy Pts line (PPR) (1 have it)", log)
         self.assertEqual(self.sheet_names(), ["PPR Rankings", "Odds Comparison", "Underdog Props", "Sleeper Props",
                                               "FantasyPros Projections"])
         for suffix in ("", "_odds_comparison", "_underdog_props", "_sleeper_props", "_fantasypros_projections"):
@@ -121,8 +126,10 @@ class FullRun(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.tmp.name, "out.html")))
         rankings = self.read_csv()
         self.assertEqual(rankings[0]["Rank"], "1")
-        self.assertIn("SL Proj PPR", rankings[0])
-        self.assertIn("FP Proj PPR", rankings[0])
+        self.assertIn("Pass Yds SL Line", rankings[0])
+        self.assertIn("Fantasy Pts FP Proj", rankings[0])
+        snaps = history.load_snapshots()                        # the run saved a snapshot to history/
+        self.assertEqual((len(snaps), snaps[0]["week"], len(snaps[0]["rows"])), (1, 10, 8))
         self.assertIn("Fantasy Pts SL Line", rankings[0])
         with open(os.path.join(self.tmp.name, "out.html"), encoding="utf-8") as f:
             self.assertIn('"sites": ["UD", "SL", "FP"]', f.read())
@@ -134,13 +141,13 @@ class FullRun(unittest.TestCase):
         log = self.run_main(down)
         self.assertIn("couldn't load Sleeper lines", log)
         self.assertEqual(self.sheet_names(), ["PPR Rankings", "Odds Comparison", "Underdog Props", "FantasyPros Projections"])
-        self.assertNotIn("SL Proj PPR", self.read_csv()[0])
+        self.assertNotIn("Pass Yds SL Line", self.read_csv()[0])
 
     def test_fantasypros_outage_does_not_stop_the_run(self):
         log = self.run_main(None, fantasypros_down=True)
         self.assertIn("couldn't load FantasyPros projections", log)
-        self.assertNotIn("FP Proj PPR", self.read_csv()[0])
-        self.assertIn("SL Proj PPR", self.read_csv()[0])
+        self.assertNotIn("Fantasy Pts FP Proj", self.read_csv()[0])
+        self.assertIn("Pass Yds SL Line", self.read_csv()[0])
 
     def test_no_underdog_props_exits(self):
         with mock.patch.object(ppr_rankings, "fetch", return_value={}), \

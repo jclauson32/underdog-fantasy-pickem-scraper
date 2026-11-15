@@ -166,3 +166,23 @@ def fantasypros_pages():
                                       fumbles=0, fpts=16.1),
                               _fp_row(5, "No Points", "SF", "ARISF", rec_att=1.0)]),   # no fpts -> skipped
     }
+
+
+SLEEPER_STATE = {"week": 10, "season": "2026", "season_type": "regular", "season_start_date": "2026-09-09"}
+
+
+def sleeper_stats_week():
+    """Sleeper stats feed rows (actual box scores) for the sample players' week."""
+    def row(pid, first, last, pos, team, opp, **stats):
+        return {"player_id": pid, "team": team, "opponent": opp, "week": 10, "category": "stat",
+                "player": {"first_name": first, "last_name": last, "position": pos, "team": team},
+                "stats": {"gp": 1.0, **stats}}
+    return [
+        row("4984", "Josh", "Allen", "QB", "BUF", "NYJ", pass_yd=280.0, pass_td=2.0, pass_int=1.0, rush_yd=20.0,
+            rush_td=1.0, pts_ppr=29.2, pts_half_ppr=29.2),
+        row("5001", "Garrett", "Wilson", "WR", "NYJ", "BUF", rec=5.0, rec_yd=65.5, rec_td=0.0,
+            pts_ppr=11.55, pts_half_ppr=9.05),
+        row("11631", "Brian", "Thomas Jr.", "WR", "JAX", "TEN", rec=3.0, rec_yd=40.0, pts_ppr=7.0, pts_half_ppr=5.5),
+        {"player_id": "8122", "team": "ARI", "player": {"first_name": "Zonovan", "last_name": "Knight"},
+         "stats": {"gp": 0.0}},                                                           # inactive
+    ]

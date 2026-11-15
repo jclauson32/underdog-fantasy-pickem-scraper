@@ -98,14 +98,9 @@ thead .stick { z-index: 4; }
 td.c-player { font-weight: 600; }
 .pos { font-weight: 700; font-size: 11px; }
 .pos.QB { color: var(--QB); } .pos.RB { color: var(--RB); } .pos.WR { color: var(--WR); } .pos.TE { color: var(--TE); }
-.proj { position: relative; font-weight: 700; min-width: 74px; }
-.proj .bar { position: absolute; left: 0; top: 3px; bottom: 3px; background: var(--bar); border-radius: 0 3px 3px 0; z-index: 0; }
-.proj span { position: relative; z-index: 1; }
-.proj .flag { color: var(--bad); font-weight: 700; margin-left: 2px; cursor: help; }
 .fav { color: var(--good); }
 .dog { color: var(--bad); }
 .na { color: var(--muted); opacity: .5; }
-.exp { color: var(--muted); }
 .recent { color: var(--muted); font-size: 11px; text-align: left; }
 .sites { font-size: 11px; font-weight: 600; }
 .sites.Underdog { color: var(--ud); } .sites.Sleeper { color: var(--sl); }
@@ -157,6 +152,7 @@ tr.gh.collapsed td .caret { transform: rotate(-90deg); }
 </div>
 <div class="controls" id="rankBar">
   <div class="ctl" id="siteCtl"><span>Sites</span><div class="chips" id="siteChips"></div></div>
+  <label class="ctl"><span>Rank by</span><select id="rankBy"></select></label>
   <div class="ctl"><span>Stats</span><div class="chips" id="statChips"></div></div>
 </div>
 
@@ -190,40 +186,31 @@ const POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DL", "DE", "DT", "LB", "OLB", "
 const posSort = (a, b) => ((POS_ORDER.indexOf(a) + 1 || 99) - (POS_ORDER.indexOf(b) + 1 || 99)) || a.localeCompare(b);
 
 // ---- rankings columns (built from the chosen sites and stats) ----------------------------
-const SITE_NAMES = { UD: "Underdog", SL: "Sleeper", FP: "FantasyPros", Avg: "Average" };
+const SITE_NAMES = { UD: "Underdog", SL: "Sleeper", FP: "FantasyPros" };
 const SITE_TITLES = {
-  UD: "Underdog: full-PPR projection built from Underdog's lines and odds",
-  SL: "Sleeper: full-PPR projection built from Sleeper Picks' lines and odds",
+  UD: "Underdog pick'em line and odds",
+  SL: "Sleeper Picks line and odds (payout multipliers converted to American odds)",
   FP: "FantasyPros consensus projection (public pages only show the top 10 per position)",
 };
 const SITES = META.sites || ["UD"];
 const BANDS = META.bands || [];
+const RANK_BASES = META.rank_bases || [];   // published fantasy-points numbers the rank can use
 const CORE_STATS = ["Fantasy Pts", "Pass Yds", "Pass TDs", "INTs", "Rush Yds", "Receptions", "Rec Yds", "Anytime TD"];
-const NO_TD = "Props, no TD line";
 
-// The ranking projection: one site's, or the average of the selected sites that have one (r._avg)
-const projKey = sites => sites.length > 1 ? "_avg" : `${sites[0]} Proj PPR`;
-const projOf = (r, site) => site === "Avg" ? r._avg : num(r[`${site} Proj PPR`]);
-const MAX_PROJ = Math.max(1, ...DATA.rows.flatMap(r => SITES.map(s => num(r[`${s} Proj PPR`]) || 0)));
-function projCell(r, site) {
-  const v = projOf(r, site);
-  if (v === null) return "";
-  const src = r[`${site} Proj Source`];
-  let flag = "";
-  if (src === NO_TD) flag = `<span class="flag" title="${SITE_NAMES[site]} has no anytime-TD line for this player, so this projection has no touchdown points and runs low">*</span>`;
-  else if (src && src !== "Props" && site !== "FP") flag = `<span class="flag" title="No stat lines: based on ${SITE_NAMES[site]}'s ${esc(src)}">†</span>`;
-  else if (site === "Avg") {
-    const missing = rp.sites.filter(s => num(r[`${s} Proj PPR`]) === null);
-    if (missing.length) flag = `<span class="flag" title="No projection from ${missing.map(s => SITE_NAMES[s]).join(" or ")}; averaged over the rest">†</span>`;
-  }
-  const w = Math.max(0, Math.min(100, v / MAX_PROJ * 100));
-  return `<div class="bar" style="width:${w}%"></div><span>${fmt2(v)}${flag}</span>`;
+// Which sources have any data for each row
+for (const r of DATA.rows) {
+  r._has = Object.fromEntries(SITES.map(s => [s, Object.entries(r).some(([k, v]) => k.includes(` ${s} `) && v !== "" && v != null)]));
+}
+// The rank uses the chosen basis, or the first one whose source is selected
+function rankBasis() {
+  const ok = b => b && rp.sites.includes(b.site);
+  return [RANK_BASES.find(b => b.key === rp.rankBy), ...RANK_BASES].find(ok) || null;
 }
 
 function rankCols(p) {
   const sites = SITES.filter(s => p.sites.includes(s));
   const cols = [
-    { key: "_rank", label: "#", type: "num", cls: "stick c-rank", title: "Rank by the projection of the selected site(s)" },
+    { key: "_rank", label: "#", type: "num", cls: "stick c-rank", title: "Rank by the published fantasy-points number chosen in 'Rank by'" },
     { key: "Player", label: "Player", type: "text", cls: "stick c-player" },
     { key: "Pos", label: "Pos", type: "text", render: r => `<span class="pos ${esc(r.Pos)}">${esc(r.Pos)}</span>` },
     { key: "_posRank", label: "Pos Rk", type: "num", title: "Rank within position", render: r => r._posRank ? esc(r.Pos + r._posRank) : "" },
@@ -231,12 +218,6 @@ function rankCols(p) {
     { key: "Opp", label: "Opp", type: "text" },
     { key: "Kickoff (UTC)", label: "Kickoff", type: "time", render: r => kickoff(r["Kickoff (UTC)"]) },
   ];
-  const projSites = sites.length > 1 ? [...sites, "Avg"] : sites;
-  projSites.forEach((s, i) => cols.push({
-    key: s === "Avg" ? "_avg" : `${s} Proj PPR`, band: "PPR projection", sub: SITE_NAMES[s], site: s, label: "", type: "num",
-    tdCls: "proj", gl: i === 0, render: r => projCell(r, s),
-    title: s === "Avg" ? "Average of the selected sites' projections" : SITE_TITLES[s],
-  }));
   for (const b of BANDS) {
     if (!p.stats.includes(b.label)) continue;
     sites.forEach((s, si) => {
@@ -246,13 +227,12 @@ function rankCols(p) {
         if (b.fp) cols.push({ ...base, key: k("Proj"), label: "Proj", type: "num", gl: si === 0, title: SITE_TITLES.FP, render: r => { const n = num(r[k("Proj")]); return n === null ? "" : String(+n.toFixed(2)); } });
         return;
       }
-      cols.push({ ...base, key: k("Line"), label: "Line", type: "num", gl: si === 0, subStart: true });
+      cols.push({ ...base, key: k("Line"), label: "Line", type: "num", gl: si === 0, title: SITE_TITLES[s] });
       if (p.show.odds) {
         cols.push({ ...base, key: k("Over"), label: "Over", type: "odds", title: "Sorted by implied probability", render: r => oddsCell(r[k("Over")]) });
         cols.push({ ...base, key: k("Under"), label: "Under", type: "odds", title: "Sorted by implied probability", render: r => oddsCell(r[k("Under")]) });
       }
       if (b.pct) cols.push({ ...base, key: k("%"), label: "Prob", type: "num", title: "No-vig probability of an anytime rush/rec TD", render: r => pctCell(r[k("%")]) });
-      if (b.exp && p.show.exp) cols.push({ ...base, key: k("Exp"), label: "Exp", type: "num", tdCls: "exp", title: "Expected value used in the PPR projection", render: r => fmt2(r[k("Exp")]) });
     });
   }
   return cols;
@@ -290,8 +270,9 @@ const VIEWS = {
     rows: DATA.rows,
     cols: p => rankCols(p),
     groups: [["", "None"], ["Pos", "Position"], ["Team", "Team"], ["Game", "Game"]],
-    toggles: [["odds", "Odds"], ["exp", "Expected stats"]],
-    defaults: { sortKey: "_rank", sortDir: 1, groupBy: "", show: { odds: true, exp: false }, sites: SITES.slice(), stats: CORE_STATS.slice() },
+    toggles: [["odds", "Odds"]],
+    defaults: { sortKey: "_rank", sortDir: 1, groupBy: "", show: { odds: true }, sites: SITES.slice(), stats: CORE_STATS.slice(),
+                rankBy: (RANK_BASES[0] || {}).key },
   },
   compare: {
     rows: DATA.comparison || [],
@@ -362,6 +343,7 @@ function setupView() {
   $("toggles").innerHTML = v.toggles.map(([k, l]) => `<button class="chip" data-toggle="${k}">${l}</button>`).join("");
 
   if (state.view === "rankings") {
+    $("rankBy").innerHTML = RANK_BASES.map(b => `<option value="${esc(b.key)}">${esc(b.label)}</option>`).join("");
     $("siteChips").innerHTML = SITES.map(s => `<button class="chip site-${s}" data-site="${s}">${SITE_NAMES[s]}</button>`).join("");
     $("statChips").innerHTML = BANDS.map(b => `<button class="chip" data-stat="${esc(b.label)}">${esc(b.label)}</button>`).join("")
       + `<button class="chip link" data-stats="core">Core</button><button class="chip link" data-stats="all">All</button><button class="chip link" data-stats="none">None</button>`;
@@ -386,7 +368,6 @@ $("siteChips").addEventListener("click", e => {
   const on = rp.sites.includes(s);
   if (on && rp.sites.length === 1) return;           // keep at least one site
   rp.sites = on ? rp.sites.filter(x => x !== s) : SITES.filter(x => x === s || rp.sites.includes(x));
-  if (rp.sortKey.endsWith(" Proj PPR") && !rankCols(rp).some(c => c.key === rp.sortKey)) { rp.sortKey = "_rank"; rp.sortDir = 1; }
   save(); render();
 });
 $("statChips").addEventListener("click", e => {
@@ -398,6 +379,12 @@ $("statChips").addEventListener("click", e => {
     const l = b.dataset.stat;
     rp.stats = rp.stats.includes(l) ? rp.stats.filter(x => x !== l) : BANDS.map(x => x.label).filter(x => x === l || rp.stats.includes(x));
   }
+  save(); render();
+});
+$("rankBy").addEventListener("change", e => {
+  rp.rankBy = e.target.value;
+  const b = RANK_BASES.find(x => x.key === rp.rankBy);
+  if (b && !rp.sites.includes(b.site)) rp.sites = SITES.filter(x => x === b.site || rp.sites.includes(x));
   save(); render();
 });
 $("q").addEventListener("input", e => { state.q = e.target.value.trim().toLowerCase(); render(); });
@@ -425,14 +412,12 @@ function cmp(col, dir) {
 }
 
 // Rank players by the projection of the selected site(s) (average when both)
+// Rank players with the chosen published number (blank for players without it)
 function assignRanks(rows) {
-  for (const r of rows) {
-    const vals = rp.sites.map(s => num(r[`${s} Proj PPR`])).filter(v => v !== null);
-    r._avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-  }
-  const key = projKey(rp.sites);
-  const ranked = rows.filter(r => num(r[key]) !== null).sort((a, b) => num(b[key]) - num(a[key]));
+  const basis = rankBasis();
   for (const r of rows) { r._rank = null; r._posRank = null; }
+  if (!basis) return;
+  const ranked = rows.filter(r => num(r[basis.key]) !== null).sort((a, b) => num(b[basis.key]) - num(a[basis.key]));
   const posCount = {};
   ranked.forEach((r, i) => { r._rank = i + 1; posCount[r.Pos] = (posCount[r.Pos] || 0) + 1; r._posRank = posCount[r.Pos]; });
 }
@@ -486,10 +471,7 @@ function renderRow(r, cols) {
 function filteredRows() {
   const v = VIEWS[state.view];
   let rows = v.rows;
-  if (state.view === "rankings") {
-    const key = projKey(rp.sites);
-    rows = rows.filter(r => num(r[key]) !== null);
-  }
+  if (state.view === "rankings") rows = rows.filter(r => rp.sites.some(s => r._has[s]));
   return rows.filter(r =>
     (!state.pos.size || state.pos.has(r.Pos)) &&
     (!state.team || r.Team === state.team) &&
@@ -510,13 +492,15 @@ function render(keepLimit) {
   if (state.view === "rankings") {
     for (const b of $("siteChips").children) b.setAttribute("aria-pressed", rp.sites.includes(b.dataset.site));
     for (const b of $("statChips").children) if (b.dataset.stat) b.setAttribute("aria-pressed", rp.stats.includes(b.dataset.stat));
+    const basis = rankBasis();
+    $("rankBy").value = basis ? basis.key : "";
     assignRanks(v.rows);
   }
 
   const cols = v.cols(p);
   const sortCol = cols.find(c => c.key === p.sortKey) || cols[0];
   const rows = filteredRows().sort(cmp(sortCol, p.sortKey === sortCol.key ? p.sortDir : 1));
-  const total = state.view === "rankings" ? v.rows.filter(r => num(r[projKey(rp.sites)]) !== null).length : v.rows.length;
+  const total = state.view === "rankings" ? v.rows.filter(r => rp.sites.some(s => r._has[s])).length : v.rows.length;
   $("count").textContent = `${rows.length.toLocaleString()} of ${total.toLocaleString()} ${state.view === "compare" ? "props" : "players"}`;
 
   const tbl = $("tbl");
@@ -544,14 +528,14 @@ function render(keepLimit) {
     if (p.groupBy === "Pos") keys.sort(posSort);
     else if (p.groupBy === "Game") keys.sort((a, b) => (groups.get(a)[0]["Kickoff (UTC)"] || "").localeCompare(groups.get(b)[0]["Kickoff (UTC)"] || "") || a.localeCompare(b));
     else if (p.groupBy !== "Player") keys.sort();   // Player groups follow the current sort
-    const pk = projKey(rp.sites);
+    const basis = rankBasis();
     for (const k of keys) {
       const g = groups.get(k);
       const collapsed = p.collapsed.has(k);
       let meta = `${g.length} ${state.view === "compare" ? "prop" : "player"}${g.length === 1 ? "" : "s"}`;
-      if (state.view === "rankings") {
-        const t = g.reduce((a, r) => a + (num(r[pk]) || 0), 0);
-        meta += ` · total ${t.toFixed(1)} · avg ${(t / g.length).toFixed(1)} proj PPR`;
+      if (state.view === "rankings" && basis) {
+        const vals = g.map(r => num(r[basis.key])).filter(x => x !== null);
+        if (vals.length) meta += ` · avg ${(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)} (${basis.label})`;
       } else {
         const both = g.filter(r => r.Sites === "Both"), diff = both.filter(r => num(r["Line Δ (SL−UD)"]));
         if (both.length) meta += ` · ${both.length} on both sites · ${diff.length} with different lines`;

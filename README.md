@@ -1,8 +1,9 @@
 # NFL PPR Rankings (with odds)
 
 `ppr_rankings.py` pulls every live NFL prop from **Underdog Fantasy** and **Sleeper Picks**, plus
-**FantasyPros**' weekly consensus projections, and builds a spreadsheet and an interactive page of players ranked by projected
-**full-PPR** fantasy points, with both sites' lines and odds side by side.
+**FantasyPros**' weekly consensus projections, and lays them out side by side in a spreadsheet and an
+interactive page. It makes **no projections of its own**: every number is a site's posted line and odds, a
+straight conversion of those odds (no-vig probability), or FantasyPros' published projection.
 
 No installs needed (Python 3 standard library only):
 
@@ -13,14 +14,16 @@ python3 ppr_rankings.py --no-sleeper     # skip Sleeper
 python3 ppr_rankings.py --no-fantasypros # skip FantasyPros
 python3 ppr_rankings.py -o week11.xlsx   # custom file name
 python3 ppr_rankings.py --no-csv         # skip the CSV copies
+python3 ppr_rankings.py --no-history     # don't save a snapshot
+python3 projected_vs_actual.py           # compare saved snapshots with actual results
 ```
 
 **Sheets** (each also written as a CSV: `nfl_ppr_rankings.csv`, `nfl_ppr_rankings_odds_comparison.csv`, ...)
-- **PPR Rankings**: one row per player on any source: rank, team/opponent, kickoff, a full-PPR projection per
-  source (`UD Proj PPR` and `SL Proj PPR` built from each site's own lines, `FP Proj PPR` = FantasyPros
-  consensus) and their average (used for the rank), then for every stat (fantasy points, pass/rush/receiving
-  yards, TDs, receptions, attempts, longest plays, ...) each site's line, over/under odds and expected value,
-  plus FantasyPros' projected value, e.g. `Pass Yds UD Line`, `Pass Yds SL Line`, `Pass Yds FP Proj`.
+- **PPR Rankings**: one row per offensive player on any source: rank, team/opponent, kickoff, then for every
+  stat (fantasy points, pass/rush/receiving yards, TDs, receptions, attempts, longest plays, ...) each site's
+  line and over/under odds plus FantasyPros' projected value, e.g. `Pass Yds UD Line`, `Pass Yds SL Line`,
+  `Pass Yds FP Proj`. Ranked by **Sleeper's Fantasy Points line** (full PPR); players without one are listed
+  after, unranked. (Without Sleeper, FantasyPros' projection is used, then Underdog's half-PPR line.)
 - **Odds Comparison**: every prop from both sites, one row per player + stat: each site's line, odds and no-vig
   over %, the differences (Sleeper − Underdog), and Sleeper's pick data (popularity, over/under pick counts,
   recent results and how often they beat the current line). Stats only one site offers are included too.
@@ -47,39 +50,49 @@ full PPR, so that stat is labelled with both and its line difference isn't apple
 - click any column header to sort by it; click again to reverse (odds sort by implied probability, so
   descending puts the most likely outcome first)
 - pick the **sources** (Underdog, Sleeper, FantasyPros, any combination): every stat shows a top header (e.g.
-  "PPR projection", "Pass Yds") with a column group per selected source underneath; the rank follows the
-  selected source's projection (the average of the selected sources when several are on)
-- pick which **stats** to show (Core / All / None shortcuts), and toggle the odds and expected-value columns
+  "Fantasy Pts", "Pass Yds") with a column group per selected source underneath
+- **Rank by** Sleeper's Fantasy Points line (PPR), FantasyPros' projection (PPR) or Underdog's Fantasy Points
+  line (half-PPR)
+- pick which **stats** to show (Core / All / None shortcuts), and toggle the odds columns
 - filter by position, team, game or player name (plus stat and "offered on both sites" in the comparison)
 - group by position, team or game (and player or stat in the comparison); groups collapse and show totals
 
+**Projected vs actual.** Every `ppr_rankings.py` run saves a snapshot of all lines, odds and FantasyPros
+projections to `history/snapshots/`. Once a week's games are final (after Tuesday), `projected_vs_actual.py`
+takes each player's last snapshot before his kickoff, downloads the actual box scores from Sleeper's public stats
+feed (kept in `history/results/`), and writes `projected_vs_actual.xlsx`:
+- **Summary**: per source and stat: players, average projected vs actual, average miss, over/under %, the
+  odds-implied over %, and how often the side the odds favoured won
+- **Fantasy Pts Rank**: per week and source, how well each fantasy-points number ordered players
+  (rank correlation with actual points; 1 = perfect)
+- **Details**: every player, stat and source
+Actual fantasy points use each source's scoring (Underdog half-PPR; Sleeper and FantasyPros full PPR). Players
+who didn't play are left out. Options: `--week N`, `--season YYYY`, `--refresh` (re-download stat corrections).
+
+**Scheduled snapshots.** Claude cloud routines run `ppr_rankings.py` before each game window and push each
+snapshot to the `history` branch of this repo (snapshots aren't committed to `main`). To use them locally:
+```
+git fetch origin history && git restore --source=origin/history --worktree -- history/snapshots
+python3 projected_vs_actual.py
+```
+
 **Code layout**
-- `ppr_rankings.py`: fetches Underdog, builds the projections, rankings and comparison, writes the outputs
+- `ppr_rankings.py`: fetches Underdog, builds the rankings and comparison, writes the outputs
 - `sleeper_scraper.py`: `SleeperScraper` (mirrors `UnderdogScraper`): Sleeper Picks lines, the player list
   (cached in `.cache/` for a day) and name matching. Run it alone with `python3 sleeper_scraper.py` to save
   `sleeper_props.csv`.
 - `fantasypros_scraper.py`: `FantasyProsScraper`: reads the projections each public position page embeds.
   Run it alone with `python3 fantasypros_scraper.py` to save `fantasypros_projections.csv`.
+- `projected_vs_actual.py` + `history.py`: snapshots, NFL week numbering, actual results and the comparison
 - `templates/rankings.html`: the interactive page
 - `config.json`: API URLs and headers for both sites
 
 Both sites' APIs are public but undocumented, so they can change without notice. If Sleeper is unreachable the
 script still runs without the Sleeper columns.
 
-**Tests**: `python3 -m unittest` runs 76 offline tests (odds math checked against hand calculations, parsing,
+**Tests**: `python3 -m unittest` runs 81 offline tests (odds conversions checked against hand calculations, parsing,
 name matching, rankings, the comparison, the file writers, and a full run with the network replaced by sample
 data in `tests/fixtures.py`).
-
-**How projections work**
-1. Each line's over/under odds are converted to a no-vig probability of the over.
-2. Count stats (receptions, TDs, pass TDs, INTs, fumbles) use the Poisson mean that matches that probability;
-   yardage stats shift the line by the odds-implied z-score.
-3. Scoring: 0.04/pass yd, 4/pass TD, -2/INT, 0.1/rush or rec yd, 1/reception, 6/rush-rec TD, -2/fumble lost.
-4. Missing rush yards are derived from Rush+Rec or Pass+Rush combo lines. If a player has no stat props, the
-   site's Fantasy Points line is used instead (Underdog's is half-PPR, so + 0.5 x expected receptions).
-5. Each site is projected from its own lines only. Sleeper posts anytime-TD lines for far fewer players than
-   Underdog; without one, a projection has no touchdown points and runs low (about 1 point). Those are
-   marked `Props, no TD line` in `Proj Source` and with `*` on the page.
 
 Only players with lines currently posted show up, so run it close to kickoff for the fullest list.
 
