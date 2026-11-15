@@ -69,10 +69,17 @@ feed (kept in `history/results/`), and writes `projected_vs_actual.xlsx`:
 Actual fantasy points use each source's scoring (Underdog half-PPR; Sleeper and FantasyPros full PPR). Players
 who didn't play are left out. Options: `--week N`, `--season YYYY`, `--refresh` (re-download stat corrections).
 
-**Scheduled snapshots.** Claude cloud routines run `ppr_rankings.py` before each game window and push each
-snapshot to the `history` branch of this repo (snapshots aren't committed to `main`). To use them locally:
+**Week by week.** The interactive page has a **Week** picker built from `history/`: each week shows every
+player's last lines and projections before his kickoff. Once a week is final, each stat gets an **Actual**
+column, "Actual fantasy points" becomes a Rank by option, and the **Projected vs Actual** tab shows the accuracy
+summary for that week or the season to date. The Odds Comparison tab is always the live, current lines.
+
+**Scheduled snapshots.** Claude cloud routines run before each game window: `scripts/pull_history.sh` (load the
+saved history), `python3 ppr_rankings.py`, `scripts/push_history.sh` (push new snapshots and results to the
+`history` branch; nothing is committed to `main`), then republish the page on claude.ai. To use the history
+locally:
 ```
-git fetch origin history && git restore --source=origin/history --worktree -- history/snapshots
+scripts/pull_history.sh
 python3 projected_vs_actual.py
 ```
 
@@ -84,13 +91,15 @@ python3 projected_vs_actual.py
 - `fantasypros_scraper.py`: `FantasyProsScraper`: reads the projections each public position page embeds.
   Run it alone with `python3 fantasypros_scraper.py` to save `fantasypros_projections.csv`.
 - `projected_vs_actual.py` + `history.py`: snapshots, NFL week numbering, actual results and the comparison
+- `weekly.py`: the week-by-week data embedded in the page
+- `scripts/pull_history.sh`, `scripts/push_history.sh`: sync `history/` with the `history` branch
 - `templates/rankings.html`: the interactive page
 - `config.json`: API URLs and headers for both sites
 
 Both sites' APIs are public but undocumented, so they can change without notice. If Sleeper is unreachable the
 script still runs without the Sleeper columns.
 
-**Tests**: `python3 -m unittest` runs 81 offline tests (odds conversions checked against hand calculations, parsing,
+**Tests**: `python3 -m unittest` runs 85 offline tests (odds conversions checked against hand calculations, parsing,
 name matching, rankings, the comparison, the file writers, and a full run with the network replaced by sample
 data in `tests/fixtures.py`).
 

@@ -84,6 +84,8 @@ th.subband { text-align: center; border-left: 1px solid var(--border); }
 th.site-UD { color: var(--ud); }
 th.site-SL { color: var(--sl); }
 th.site-FP { color: var(--fp); }
+th.site-ACT { color: var(--text); }
+td.site-ACT { font-weight: 700; }
 th.site-Avg { color: var(--avg); }
 th.gl, td.gl { border-left: 1px solid var(--border); }
 td { padding: 5px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; background: var(--bg); }
@@ -103,7 +105,7 @@ td.c-player { font-weight: 600; }
 .na { color: var(--muted); opacity: .5; }
 .recent { color: var(--muted); font-size: 11px; text-align: left; }
 .sites { font-size: 11px; font-weight: 600; }
-.sites.Underdog { color: var(--ud); } .sites.Sleeper { color: var(--sl); }
+.sites.Underdog { color: var(--ud); } .sites.Sleeper { color: var(--sl); } .sites.FantasyPros { color: var(--fp); }
 .note { color: var(--muted); font-size: 12px; }
 tr.gh td {
   background: var(--group); font-weight: 700; text-align: left; cursor: pointer;
@@ -130,15 +132,17 @@ tr.gh.collapsed td .caret { transform: rotate(-90deg); }
   </div>
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" data-view="rankings">PPR Rankings</button>
-    <button class="tab" role="tab" data-view="compare">Odds Comparison</button>
+    <button class="tab" role="tab" data-view="accuracy">Projected vs Actual</button>
+    <button class="tab" role="tab" data-view="compare">Odds Comparison (live)</button>
   </div>
 </header>
 
 <div class="controls">
-  <label class="ctl"><span>Search</span><input type="search" id="q" placeholder="Player name"></label>
-  <div class="ctl"><span>Position</span><div class="chips" id="posChips"></div></div>
-  <label class="ctl"><span>Team</span><select id="team"></select></label>
-  <label class="ctl"><span>Game</span><select id="game"></select></label>
+  <label class="ctl" id="weekCtl"><span>Week</span><select id="week"></select></label>
+  <label class="ctl" id="qCtl"><span>Search</span><input type="search" id="q" placeholder="Player name"></label>
+  <div class="ctl" id="posCtl"><span>Position</span><div class="chips" id="posChips"></div></div>
+  <label class="ctl" id="teamCtl"><span>Team</span><select id="team"></select></label>
+  <label class="ctl" id="gameCtl"><span>Game</span><select id="game"></select></label>
   <label class="ctl" id="statCtl"><span>Stat</span><select id="stat"></select></label>
   <label class="ctl" id="sitesCtl"><span>Offered on</span>
     <select id="sites">
@@ -198,13 +202,24 @@ const RANK_BASES = META.rank_bases || [];   // published fantasy-points numbers 
 const CORE_STATS = ["Fantasy Pts", "Pass Yds", "Pass TDs", "INTs", "Rush Yds", "Receptions", "Rec Yds", "Anytime TD"];
 
 // Which sources have any data for each row
-for (const r of DATA.rows) {
-  r._has = Object.fromEntries(SITES.map(s => [s, Object.entries(r).some(([k, v]) => k.includes(` ${s} `) && v !== "" && v != null)]));
+// Weeks: each week's last pre-kickoff lines and projections, with actual results once the week is final
+const WEEKS = (DATA.weeks && DATA.weeks.length) ? DATA.weeks : [{ label: "Current week", final: false, rows: DATA.rows, summary: [] }];
+const curWeek = () => WEEKS[state.weekIdx] || WEEKS[0];
+for (const w of WEEKS) {
+  for (const r of w.rows) {
+    r._has = Object.fromEntries(SITES.map(s => [s, Object.entries(r).some(([k, v]) => k.includes(` ${s} `) && v !== "" && v != null)]));
+  }
+  (w.summary || []).forEach((r, i) => { r._order = i + 1; });
 }
+(DATA.season_summary || []).forEach((r, i) => { r._order = i + 1; });
+const ACTUAL_BASIS = { site: "ACT", key: "Fantasy Pts Actual", label: "Actual fantasy points (PPR)" };
+const rankBases = () => curWeek().final ? [...RANK_BASES, ACTUAL_BASIS] : RANK_BASES;
+
 // The rank uses the chosen basis, or the first one whose source is selected
 function rankBasis() {
-  const ok = b => b && rp.sites.includes(b.site);
-  return [RANK_BASES.find(b => b.key === rp.rankBy), ...RANK_BASES].find(ok) || null;
+  const ok = b => b && (b.site === "ACT" ? curWeek().final : rp.sites.includes(b.site));
+  const bases = rankBases();
+  return [bases.find(b => b.key === rp.rankBy), ...bases].find(ok) || null;
 }
 
 function rankCols(p) {
@@ -234,6 +249,12 @@ function rankCols(p) {
       }
       if (b.pct) cols.push({ ...base, key: k("%"), label: "Prob", type: "num", title: "No-vig probability of an anytime rush/rec TD", render: r => pctCell(r[k("%")]) });
     });
+    if (curWeek().final && p.show.actual) {
+      const key = `${b.label} Actual`;
+      cols.push({ band: b.label, sub: "Actual", site: "ACT", key, label: "", type: "num", gl: true,
+        title: b.label === "Fantasy Pts" ? "Actual full-PPR fantasy points" : "What he actually did",
+        render: r => r.Played === false ? `<span class="na" title="Did not play">DNP</span>` : esc(r[key] ?? "") });
+    }
   }
   return cols;
 }
@@ -264,15 +285,40 @@ const CMP_COLS = [
   { key: "SL Recent Results", label: "Recent results (oldest → newest)", type: "text", band: "Sleeper pick data", toggle: "picks", tdCls: "recent", sortable: false },
 ];
 
+const SOURCE_SITE = { Underdog: "UD", Sleeper: "SL", FantasyPros: "FP" };
+const ACC_COLS = [
+  { key: "_order", label: "#", type: "num" },
+  { key: "Stat", label: "Stat", type: "text" },
+  { key: "Source", label: "Source", type: "text", render: r => `<span class="sites ${esc(r.Source)}">${esc(r.Source)}</span>` },
+  { key: "Type", label: "Type", type: "text" },
+  { key: "Players", label: "Players", type: "num" },
+  { key: "Avg Projected", label: "Avg projected", type: "num", gl: true },
+  { key: "Avg Actual", label: "Avg actual", type: "num" },
+  { key: "Avg Actual − Projected", label: "Actual − projected", type: "num", title: "Positive: players beat the number on average", render: r => signedCell(r["Avg Actual − Projected"]) },
+  { key: "Avg Miss (abs)", label: "Avg miss", type: "num", title: "Average distance between the number and what happened" },
+  { key: "Over %", label: "Over %", type: "num", gl: true, render: r => pctCell(r["Over %"]) },
+  { key: "Under %", label: "Under %", type: "num", render: r => pctCell(r["Under %"]) },
+  { key: "Odds Implied Over %", label: "Odds said over %", type: "num", title: "Average no-vig over probability from the odds", render: r => pctCell(r["Odds Implied Over %"]) },
+  { key: "Favored Side Won %", label: "Favored side won", type: "num", title: "When the odds leaned one way, how often that side hit", render: r => pctCell(r["Favored Side Won %"]) },
+  { key: "Rank Correlation", label: "Rank order", type: "num", gl: true, title: "Fantasy Pts only: how well this source ordered players by actual points (1 = perfect, 0 = no better than random)", render: r => fmt2(r["Rank Correlation"]) },
+];
+
 const HAS_SLEEPER = SITES.includes("SL");
 const VIEWS = {
   rankings: {
-    rows: DATA.rows,
+    get rows() { return curWeek().rows; },
     cols: p => rankCols(p),
     groups: [["", "None"], ["Pos", "Position"], ["Team", "Team"], ["Game", "Game"]],
-    toggles: [["odds", "Odds"]],
-    defaults: { sortKey: "_rank", sortDir: 1, groupBy: "", show: { odds: true }, sites: SITES.slice(), stats: CORE_STATS.slice(),
+    toggles: [["odds", "Odds"], ["actual", "Actual results"]],
+    defaults: { sortKey: "_rank", sortDir: 1, groupBy: "", show: { odds: true, actual: true }, sites: SITES.slice(), stats: CORE_STATS.slice(),
                 rankBy: (RANK_BASES[0] || {}).key },
+  },
+  accuracy: {
+    get rows() { return prefs.accuracy.show.season ? (DATA.season_summary || []) : (curWeek().summary || []); },
+    cols: () => ACC_COLS,
+    groups: [["", "None"], ["Stat", "Stat"], ["Source", "Source"]],
+    toggles: [["season", "Season to date"]],
+    defaults: { sortKey: "_order", sortDir: 1, groupBy: "", show: { season: false } },
   },
   compare: {
     rows: DATA.comparison || [],
@@ -296,7 +342,7 @@ rp.sites = (rp.sites || []).filter(s => SITES.includes(s));
 if (!rp.sites.length) rp.sites = SITES.slice();
 rp.stats = (rp.stats || []).filter(l => BANDS.some(b => b.label === l));
 
-const state = { view: VIEWS[saved.view] ? saved.view : "rankings", q: "", pos: new Set(), team: "", game: "", stat: "", sites: "Both" };
+const state = { weekIdx: 0, view: VIEWS[saved.view] ? saved.view : "rankings", q: "", pos: new Set(), team: "", game: "", stat: "", sites: "Both" };
 function save() {
   try {
     const views = {};
@@ -324,6 +370,10 @@ function setupView() {
   $("statCtl").hidden = state.view !== "compare";
   $("sitesCtl").hidden = state.view !== "compare" || !HAS_SLEEPER;
   $("rankBar").hidden = state.view !== "rankings";
+  $("weekCtl").hidden = state.view === "compare" || WEEKS.length < 1;
+  for (const id of ["qCtl", "posCtl", "teamCtl", "gameCtl"]) $(id).hidden = state.view === "accuracy";
+  $("week").innerHTML = WEEKS.map((w, i) => `<option value="${i}">${esc(w.label)}</option>`).join("");
+  $("week").value = String(state.weekIdx);
   $("siteCtl").hidden = SITES.length < 2;
 
   const positions = [...new Set(v.rows.map(r => r.Pos).filter(Boolean))].sort(posSort);
@@ -343,7 +393,7 @@ function setupView() {
   $("toggles").innerHTML = v.toggles.map(([k, l]) => `<button class="chip" data-toggle="${k}">${l}</button>`).join("");
 
   if (state.view === "rankings") {
-    $("rankBy").innerHTML = RANK_BASES.map(b => `<option value="${esc(b.key)}">${esc(b.label)}</option>`).join("");
+    $("rankBy").innerHTML = rankBases().map(b => `<option value="${esc(b.key)}">${esc(b.label)}</option>`).join("");
     $("siteChips").innerHTML = SITES.map(s => `<button class="chip site-${s}" data-site="${s}">${SITE_NAMES[s]}</button>`).join("");
     $("statChips").innerHTML = BANDS.map(b => `<button class="chip" data-stat="${esc(b.label)}">${esc(b.label)}</button>`).join("")
       + `<button class="chip link" data-stats="core">Core</button><button class="chip link" data-stats="all">All</button><button class="chip link" data-stats="none">None</button>`;
@@ -381,6 +431,7 @@ $("statChips").addEventListener("click", e => {
   }
   save(); render();
 });
+$("week").addEventListener("change", e => { state.weekIdx = +e.target.value; setupView(); render(); });
 $("rankBy").addEventListener("change", e => {
   rp.rankBy = e.target.value;
   const b = RANK_BASES.find(x => x.key === rp.rankBy);
@@ -501,14 +552,18 @@ function render(keepLimit) {
   const sortCol = cols.find(c => c.key === p.sortKey) || cols[0];
   const rows = filteredRows().sort(cmp(sortCol, p.sortKey === sortCol.key ? p.sortDir : 1));
   const total = state.view === "rankings" ? v.rows.filter(r => rp.sites.some(s => r._has[s])).length : v.rows.length;
-  $("count").textContent = `${rows.length.toLocaleString()} of ${total.toLocaleString()} ${state.view === "compare" ? "props" : "players"}`;
+  $("count").textContent = `${rows.length.toLocaleString()} of ${total.toLocaleString()} ${{ compare: "props", accuracy: "rows" }[state.view] || "players"}`;
 
   const tbl = $("tbl");
   tbl.querySelectorAll("tbody, tfoot").forEach(t => t.remove());
   $("thead").innerHTML = renderHead(cols);
 
   if (!rows.length) {
-    tbl.insertAdjacentHTML("beforeend", `<tbody><tr><td class="empty" colspan="${cols.length}">No rows match these filters.</td></tr></tbody>`);
+    const msg = state.view === "accuracy"
+      ? (curWeek().final || p.show.season ? "Nothing to compare for this selection yet."
+         : "This week isn't final yet. Actual results come in after its last game (they're fetched from Wednesday on).")
+      : "No rows match these filters.";
+    tbl.insertAdjacentHTML("beforeend", `<tbody><tr><td class="empty" colspan="${cols.length}">${msg}</td></tr></tbody>`);
     return;
   }
 

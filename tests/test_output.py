@@ -8,6 +8,7 @@ import tempfile
 import unittest
 import urllib.error
 import zipfile
+from datetime import datetime, timezone
 from unittest import mock
 from xml.dom import minidom
 
@@ -78,6 +79,12 @@ class FullRun(unittest.TestCase):
         hist = mock.patch.object(history, "HISTORY_DIR", os.path.join(self.tmp.name, "history"))
         hist.start()
         self.addCleanup(hist.stop)
+        # Snapshot as if taken the morning of the sample games, so the test doesn't depend on today's date
+        morning = datetime(2026, 11, 15, 12, tzinfo=timezone.utc)
+        snap = mock.patch.object(ppr_rankings, "save_snapshot",
+                                 lambda rows, state: history.save_snapshot(rows, state, morning))
+        snap.start()
+        self.addCleanup(snap.stop)
         cache = mock.patch.object(sleeper_scraper, "PLAYERS_CACHE", os.path.join(self.tmp.name, "players.json"))
         cache.start()
         self.addCleanup(cache.stop)
@@ -132,7 +139,9 @@ class FullRun(unittest.TestCase):
         self.assertEqual((len(snaps), snaps[0]["week"], len(snaps[0]["rows"])), (1, 10, 8))
         self.assertIn("Fantasy Pts SL Line", rankings[0])
         with open(os.path.join(self.tmp.name, "out.html"), encoding="utf-8") as f:
-            self.assertIn('"sites": ["UD", "SL", "FP"]', f.read())
+            page = f.read()
+        self.assertIn('"sites": ["UD", "SL", "FP"]', page)
+        self.assertIn('"label": "Week 10 (in progress)"', page)     # week-by-week data from the snapshot
 
     def test_sleeper_outage_does_not_stop_the_run(self):
         def down(_self, url):

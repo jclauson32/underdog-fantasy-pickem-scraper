@@ -36,7 +36,7 @@ from xml.sax.saxutils import escape
 
 from fantasypros_scraper import STATS as FANTASYPROS_STATS
 from fantasypros_scraper import FantasyProsScraper
-from history import save_snapshot
+from history import load_snapshots, save_snapshot
 from sleeper_scraper import SleeperScraper
 
 API_URL = "https://api.underdogfantasy.com/v1/over_under_lines"
@@ -492,13 +492,14 @@ def write_xlsx(path, sheets):
             z.writestr(f"xl/worksheets/sheet{i}.xml", sheet_xml(rows))
 
 
-def write_html(path, rankings, comparison, meta=None):
+def write_html(path, rankings, comparison, meta=None, weeks=None, season_summary=None):
     """Self-contained interactive page (data embedded, no server needed)."""
     template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "rankings.html")
     with open(template_path, encoding="utf-8") as f:
         template = f.read()
     payload = json.dumps({"generated": datetime.now().astimezone().isoformat(), "meta": meta or {},
-                          "rows": rankings, "comparison": comparison})
+                          "rows": rankings, "comparison": comparison,
+                          "weeks": weeks or [], "season_summary": season_summary or []})
     payload = payload.replace("</", "<\\/")  # keep "</script>" out of the inline script
     with open(path, "w", encoding="utf-8") as f:
         f.write(template.replace("/*__DATA__*/null", payload, 1))
@@ -546,13 +547,24 @@ def main():
     basis = next(label for site, col, label in RANK_BASES if rankings and col in rankings[0])
     print(f"{len(rankings)} players; ranked by {basis} ({sum(1 for r in rankings if r['Rank'] != '')} have it)")
 
+    stats_scraper = sleeper or SleeperScraper()
+    try:
+        state = stats_scraper.fetch_state()
+    except Exception as e:  # noqa: BLE001 - the week can be worked out later from kickoffs
+        print(f"Warning: couldn't load the NFL season state ({e})")
+        state = {}
     if not args.no_history:
-        try:
-            state = (sleeper or SleeperScraper()).fetch_state()
-        except Exception as e:  # noqa: BLE001 - the week can be worked out later from kickoffs
-            print(f"Warning: couldn't load the NFL season state ({e}); saving the snapshot without it")
-            state = {}
         print(f"Saved snapshot {os.path.relpath(save_snapshot(rankings, state))} (for projected_vs_actual.py)")
+
+    # Week-by-week view for the page: each week's closing lines, plus actual results once a week is final
+    from weekly import build_weeks   # imported here: weekly -> projected_vs_actual -> this module
+    snapshots = [] if args.no_history else load_snapshots()
+    if not snapshots:
+        snapshots = [{"taken_at": "1970-01-01T00:00:00Z", "season": state.get("season"), "week": state.get("week"),
+                      "season_start_date": state.get("season_start_date"), "rows": rankings}]
+    weeks, season_summary = build_weeks(snapshots, state, stats_scraper, STAT_BANDS)
+    if weeks:
+        print("Weeks on the page: " + ", ".join(w["label"] for w in weeks))
 
     comparison = build_comparison(by_app, sleeper)
     flat.sort(key=lambda r: (r["Kickoff (UTC)"], r["Game"], r["Player"], r["Stat"]))
@@ -573,7 +585,7 @@ def main():
             "rank_bases": [{"site": site, "key": col, "label": label} for site, col, label in RANK_BASES
                            if rankings and col in rankings[0]],
             "fantasypros_week": fantasypros.week if fantasypros else None}
-    write_html(html_path, rankings, comparison, meta)
+    write_html(html_path, rankings, comparison, meta, weeks, season_summary)
     print(f"Wrote {html_path}  (interactive: rankings + odds comparison)")
     if not args.no_csv:
         base = os.path.splitext(args.output)[0]
