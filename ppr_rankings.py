@@ -33,6 +33,8 @@ from datetime import datetime
 from statistics import NormalDist
 from xml.sax.saxutils import escape
 
+from sleeper_scraper import SleeperScraper
+
 API_URL = "https://api.underdogfantasy.com/v1/over_under_lines"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
@@ -138,6 +140,22 @@ def fetch():
     req = urllib.request.Request(API_URL, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json.load(resp)
+
+
+def add_sleeper(rankings, sleeper):
+    """Insert 'Sleeper PPR' and 'Props − Sleeper' after the UD columns. Returns (rows, matched count)."""
+    matched, out = 0, []
+    for r in rankings:
+        proj = sleeper.lookup(r["Player"], r["Team"])
+        new = {}
+        for k, v in r.items():
+            new[k] = v
+            if k == "UD Pts → PPR":
+                new["Sleeper PPR"] = round(proj["ppr"], 2) if proj else ""
+                new["Props − Sleeper"] = round(r["Proj PPR"] - proj["ppr"], 2) if proj else ""
+        matched += proj is not None
+        out.append(new)
+    return out, matched
 
 
 def fmt_american(a):
@@ -410,6 +428,8 @@ def main():
     ap.add_argument("-o", "--output", default="nfl_ppr_rankings.xlsx", help="output .xlsx path")
     ap.add_argument("--no-csv", action="store_true", help="skip writing the CSV copies")
     ap.add_argument("--open", action="store_true", help="open the interactive HTML page in your browser")
+    ap.add_argument("--no-sleeper", action="store_true", help="skip pulling Sleeper projections")
+    ap.add_argument("--week", type=int, help="Sleeper projection week (default: Sleeper's current week)")
     args = ap.parse_args()
 
     print("Fetching Underdog lines...")
@@ -422,6 +442,15 @@ def main():
     if not flat:
         sys.exit("No NFL props are posted on Underdog right now.")
     rankings = build_rankings(by_app)
+
+    if not args.no_sleeper:
+        try:
+            sleeper = SleeperScraper(week=args.week).scrape()
+            rankings, matched = add_sleeper(rankings, sleeper)
+            print(f"Sleeper week {sleeper.week} projections matched for {matched}/{len(rankings)} players")
+        except Exception as e:  # noqa: BLE001 - Sleeper is optional; never block the run
+            print(f"Warning: couldn't load Sleeper projections ({e}); continuing without them")
+
     flat.sort(key=lambda r: (r["Kickoff (UTC)"], r["Game"], r["Player"], r["Stat"]))
 
     write_xlsx(args.output, [("PPR Rankings", rankings), ("All NFL Props", flat)])

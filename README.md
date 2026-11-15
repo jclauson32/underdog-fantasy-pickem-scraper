@@ -8,9 +8,18 @@ No installs needed (Python 3 standard library only):
 ```
 python3 ppr_rankings.py                  # -> nfl_ppr_rankings.xlsx/.html/.csv + nfl_ppr_rankings_all_props.csv
 python3 ppr_rankings.py --open           # same, then opens the interactive page in your browser
+python3 ppr_rankings.py --week 11        # use a specific week's Sleeper projections
+python3 ppr_rankings.py --no-sleeper     # skip Sleeper
 python3 ppr_rankings.py -o week11.xlsx   # custom file name
 python3 ppr_rankings.py --no-csv         # xlsx only
 ```
+
+**Sleeper comparison**: each player also gets `Sleeper PPR` (Sleeper's full-PPR projection, supplied by
+RotoWire, from Sleeper's public but undocumented API) and `Props − Sleeper` (positive = the betting market
+projects more than Sleeper). Sort by the difference to find where Vegas and the projections disagree.
+If Sleeper is unreachable the script still runs, without those two columns. The Sleeper code lives in
+`sleeper_scraper.py` (`SleeperScraper`, mirroring `UnderdogScraper`); run it alone with
+`python3 sleeper_scraper.py` to save `sleeper_projections.csv`.
 
 **Interactive page** (`nfl_ppr_rankings.html`): a single offline file, no server needed. You can
 - click any column header to sort by it (projected PPR, pass yds, TD %, any line or odds); click again to reverse

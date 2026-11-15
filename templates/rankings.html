@@ -146,6 +146,8 @@ const COLS = [
   { key: "Kickoff (UTC)", label: "Kickoff", type: "time", cls: "txt", render: r => kickoff(r["Kickoff (UTC)"]) },
   { key: "Proj PPR", label: "Proj PPR", type: "num", cls: "gl", title: "Projected full-PPR points from props", render: r => projCell(r) },
   { key: "UD Pts → PPR", label: "UD PPR", type: "num", title: "Underdog Fantasy Points line (half-PPR) converted to full PPR", render: r => fmt2(num(r["UD Pts → PPR"])) },
+  { key: "Sleeper PPR", label: "Sleeper", type: "num", title: "Sleeper's full-PPR projection (RotoWire)", render: r => fmt2(num(r["Sleeper PPR"])) },
+  { key: "Props − Sleeper", label: "Δ Sleeper", type: "num", title: "Proj PPR minus Sleeper PPR. Positive = betting market is higher than Sleeper", render: r => diffCell(r["Props − Sleeper"]) },
   { key: "Anytime TD %", label: "TD %", type: "num", title: "No-vig probability of an anytime rush/rec TD", render: r => num(r["Anytime TD %"]) === null ? "" : `${(+r["Anytime TD %"]).toFixed(0)}%` },
 
   { key: "Exp Pass Yds", label: "Pass Yds", type: "num", group: "proj", gl: true, render: r => z(r["Exp Pass Yds"], fmt1) },
@@ -163,6 +165,10 @@ for (const s of ODDS_STATS) {
   COLS.push({ key: `${s} Under`, label: "Under", type: "odds", group: "odds", stat: s, title: "Sorted by implied probability", render: r => oddsCell(r[`${s} Under`]) });
 }
 
+function diffCell(v) {
+  const n = num(v); if (n === null) return "";
+  return `<span class="${n > 0 ? "fav" : n < 0 ? "dog" : ""}">${n > 0 ? "+" : ""}${n.toFixed(2)}</span>`;
+}
 function z(v, f) { const n = num(v); return n === null || n === 0 ? `<span class="na">–</span>` : f(n); }
 function oddsCell(a) {
   const v = num(a); if (v === null) return "";
