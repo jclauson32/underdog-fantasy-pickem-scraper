@@ -9,6 +9,7 @@
   --bg: #f6f7f9; --panel: #ffffff; --text: #16191d; --muted: #646b75; --border: #dfe3e8;
   --row-alt: #fafbfc; --hover: #eef3fb; --accent: #2457c5; --accent-soft: #e3ebfa;
   --bar: #cfe0fb; --group: #eef1f5; --good: #1d7a46; --bad: #b3361f;
+  --ud: #6b4fd1; --sl: #0f8a8a; --fp: #c2410c; --avg: #16191d;
   --QB: #8a4fd1; --RB: #1d8a5a; --WR: #2563c9; --TE: #c46a12;
 }
 @media (prefers-color-scheme: dark) {
@@ -16,6 +17,7 @@
     --bg: #111418; --panel: #191d23; --text: #e6e9ed; --muted: #98a1ad; --border: #2c323b;
     --row-alt: #1c2027; --hover: #232a35; --accent: #7aa5ff; --accent-soft: #23314d;
     --bar: #27406b; --group: #20252d; --good: #5ccf8e; --bad: #ff8a73;
+    --ud: #a993f5; --sl: #4fd1d1; --fp: #fb923c; --avg: #e6e9ed;
     --QB: #b791f2; --RB: #5fd19c; --WR: #7aa5ff; --TE: #f0a35a;
   }
 }
@@ -23,6 +25,7 @@
   --bg: #111418; --panel: #191d23; --text: #e6e9ed; --muted: #98a1ad; --border: #2c323b;
   --row-alt: #1c2027; --hover: #232a35; --accent: #7aa5ff; --accent-soft: #23314d;
   --bar: #27406b; --group: #20252d; --good: #5ccf8e; --bad: #ff8a73;
+  --ud: #a993f5; --sl: #4fd1d1; --fp: #fb923c; --avg: #e6e9ed;
   --QB: #b791f2; --RB: #5fd19c; --WR: #7aa5ff; --TE: #f0a35a;
 }
 * { box-sizing: border-box; }
@@ -32,29 +35,40 @@ body {
   font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   display: flex; flex-direction: column;
 }
-header { padding: 14px 16px 10px; }
+header { padding: 14px 16px 0; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 24px; }
 h1 { font-size: 18px; margin: 0 0 2px; }
 .sub { color: var(--muted); font-size: 12px; }
-.controls {
-  display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center;
-  padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+.tabs { display: flex; gap: 2px; margin-left: auto; }
+.tab {
+  font: inherit; font-weight: 600; cursor: pointer; border: 1px solid var(--border); border-bottom: none;
+  background: var(--bg); color: var(--muted); padding: 7px 14px; border-radius: 8px 8px 0 0;
 }
+.tab[aria-selected="true"] { background: var(--panel); color: var(--text); }
+.controls {
+  display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-top: 10px;
+  padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--border);
+}
+.controls + .controls { margin-top: 0; padding-top: 0; border-top: none; }
 .ctl { display: flex; align-items: center; gap: 6px; }
-.ctl > span { color: var(--muted); font-size: 12px; }
+.ctl > span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.ctl[hidden], .controls[hidden] { display: none; }
 select, input[type=search] {
   font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
-  border-radius: 6px; padding: 5px 8px;
+  border-radius: 6px; padding: 5px 8px; max-width: 220px;
 }
-input[type=search] { width: 180px; }
-.chips { display: flex; gap: 4px; }
+input[type=search] { width: 170px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .chip {
   font: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--bg);
   color: var(--text); border-radius: 999px; padding: 3px 10px;
 }
 .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+.chip.site-UD[aria-pressed="true"] { background: var(--ud); border-color: var(--ud); }
+.chip.site-SL[aria-pressed="true"] { background: var(--sl); border-color: var(--sl); }
+.chip.site-FP[aria-pressed="true"] { background: var(--fp); border-color: var(--fp); }
+.chip.link { border: none; background: none; color: var(--accent); padding: 3px 4px; }
 .count { margin-left: auto; color: var(--muted); font-size: 12px; }
-.wrap { flex: 1; overflow: auto; min-height: 0; }
+.wrap { flex: 1; overflow: auto; min-height: 0; border-top: 1px solid var(--border); }
 table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
 thead { position: sticky; top: 0; z-index: 3; }
 th {
@@ -63,29 +77,39 @@ th {
 }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
-th.sorted { color: var(--accent); }
+th.sorted { color: var(--accent) !important; }
 th .arrow { display: inline-block; width: 10px; font-size: 10px; }
-th.grp { text-align: center; color: var(--text); border-bottom: 1px solid var(--border); border-left: 1px solid var(--border); }
+th.band { text-align: center; color: var(--text); border-left: 1px solid var(--border); font-size: 13px; }
+th.subband { text-align: center; border-left: 1px solid var(--border); }
+th.site-UD { color: var(--ud); }
+th.site-SL { color: var(--sl); }
+th.site-FP { color: var(--fp); }
+th.site-Avg { color: var(--avg); }
 th.gl, td.gl { border-left: 1px solid var(--border); }
-td { padding: 5px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+td { padding: 5px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; background: var(--bg); }
 th.txt, td.txt { text-align: left; }
 tbody tr.p:nth-child(even) td { background: var(--row-alt); }
 tbody tr.p:hover td { background: var(--hover); }
-td { background: var(--bg); }
 .stick { position: sticky; z-index: 2; }
 thead .stick { z-index: 4; }
 .c-rank { left: 0; width: 46px; min-width: 46px; }
 .c-player { left: 46px; min-width: 170px; border-right: 1px solid var(--border); }
+.view-compare .c-player { left: 0; }
 td.c-player { font-weight: 600; }
 .pos { font-weight: 700; font-size: 11px; }
 .pos.QB { color: var(--QB); } .pos.RB { color: var(--RB); } .pos.WR { color: var(--WR); } .pos.TE { color: var(--TE); }
-.proj { position: relative; font-weight: 700; }
+.proj { position: relative; font-weight: 700; min-width: 74px; }
 .proj .bar { position: absolute; left: 0; top: 3px; bottom: 3px; background: var(--bar); border-radius: 0 3px 3px 0; z-index: 0; }
 .proj span { position: relative; z-index: 1; }
+.proj .flag { color: var(--bad); font-weight: 700; margin-left: 2px; cursor: help; }
 .fav { color: var(--good); }
 .dog { color: var(--bad); }
 .na { color: var(--muted); opacity: .5; }
-.small { color: var(--muted); font-size: 11px; }
+.exp { color: var(--muted); }
+.recent { color: var(--muted); font-size: 11px; text-align: left; }
+.sites { font-size: 11px; font-weight: 600; }
+.sites.Underdog { color: var(--ud); } .sites.Sleeper { color: var(--sl); }
+.note { color: var(--muted); font-size: 12px; }
 tr.gh td {
   background: var(--group); font-weight: 700; text-align: left; cursor: pointer;
   position: sticky; left: 0; z-index: 1;
@@ -94,258 +118,479 @@ tr.gh td .gmeta { color: var(--muted); font-weight: 400; margin-left: 10px; }
 tr.gh td .caret { display: inline-block; width: 14px; transition: transform .15s; }
 tr.gh.collapsed td .caret { transform: rotate(-90deg); }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
+.more { padding: 14px; text-align: center; }
+.more button { font: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 6px; padding: 6px 14px; }
 @media (max-width: 640px) {
   input[type=search] { width: 130px; }
   .count { margin-left: 0; width: 100%; }
+  .tabs { margin-left: 0; }
 }
 </style>
 </head>
 <body>
 <header>
-  <h1>NFL PPR Rankings</h1>
-  <div class="sub" id="sub"></div>
+  <div>
+    <h1>NFL PPR Rankings</h1>
+    <div class="sub" id="sub"></div>
+  </div>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-view="rankings">PPR Rankings</button>
+    <button class="tab" role="tab" data-view="compare">Odds Comparison</button>
+  </div>
 </header>
 
 <div class="controls">
   <label class="ctl"><span>Search</span><input type="search" id="q" placeholder="Player name"></label>
   <div class="ctl"><span>Position</span><div class="chips" id="posChips"></div></div>
-  <label class="ctl"><span>Team</span><select id="team"><option value="">All teams</option></select></label>
-  <label class="ctl"><span>Game</span><select id="game"><option value="">All games</option></select></label>
-  <label class="ctl"><span>Group by</span>
-    <select id="groupBy">
-      <option value="">None</option><option value="Pos">Position</option>
-      <option value="Team">Team</option><option value="Game">Game</option>
+  <label class="ctl"><span>Team</span><select id="team"></select></label>
+  <label class="ctl"><span>Game</span><select id="game"></select></label>
+  <label class="ctl" id="statCtl"><span>Stat</span><select id="stat"></select></label>
+  <label class="ctl" id="sitesCtl"><span>Offered on</span>
+    <select id="sites">
+      <option value="Both">Both sites</option><option value="">Either site</option>
+      <option value="Underdog">Underdog only</option><option value="Sleeper">Sleeper only</option>
     </select>
   </label>
-  <div class="ctl"><span>Show</span><div class="chips">
-    <button class="chip" id="showProj" aria-pressed="true">Projections</button>
-    <button class="chip" id="showOdds" aria-pressed="true">Lines &amp; odds</button>
-  </div></div>
+  <label class="ctl"><span>Group by</span><select id="groupBy"></select></label>
+  <div class="ctl"><span>Show</span><div class="chips" id="toggles"></div></div>
   <div class="count" id="count"></div>
+</div>
+<div class="controls" id="rankBar">
+  <div class="ctl" id="siteCtl"><span>Sites</span><div class="chips" id="siteChips"></div></div>
+  <div class="ctl"><span>Stats</span><div class="chips" id="statChips"></div></div>
 </div>
 
 <div class="wrap" id="wrap"><table id="tbl"><thead id="thead"></thead></table></div>
 
 <script>
 const DATA = /*__DATA__*/null;
-const ROWS = DATA.rows;
+const META = DATA.meta || {};
 
+// ---- helpers ------------------------------------------------------------------
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const num = v => (v === "" || v === null || v === undefined || isNaN(+v)) ? null : +v;
 const impliedProb = a => { const v = num(a); if (v === null) return null; return v > 0 ? 100 / (v + 100) : -v / (-v + 100); };
-const fmt1 = v => v === null ? "" : (+v).toFixed(1);
-const fmt2 = v => v === null ? "" : (+v).toFixed(2);
-
-// ---- column definitions ---------------------------------------------------
-const COLS = [
-  { key: "Rank", label: "#", type: "num", cls: "stick c-rank", title: "Overall rank by projected PPR" },
-  { key: "Player", label: "Player", type: "text", cls: "stick c-player txt" },
-  { key: "Pos", label: "Pos", type: "text", cls: "txt", render: r => `<span class="pos ${r.Pos}">${r.Pos}</span>` },
-  { key: "Pos Rank", label: "Pos Rk", type: "posrank", title: "Rank within position" },
-  { key: "Team", label: "Team", type: "text", cls: "txt" },
-  { key: "Opp", label: "Opp", type: "text", cls: "txt" },
-  { key: "Kickoff (UTC)", label: "Kickoff", type: "time", cls: "txt", render: r => kickoff(r["Kickoff (UTC)"]) },
-  { key: "Proj PPR", label: "Proj PPR", type: "num", cls: "gl", title: "Projected full-PPR points from props", render: r => projCell(r) },
-  { key: "UD Pts → PPR", label: "UD PPR", type: "num", title: "Underdog Fantasy Points line (half-PPR) converted to full PPR", render: r => fmt2(num(r["UD Pts → PPR"])) },
-  { key: "Sleeper PPR", label: "Sleeper", type: "num", title: "Sleeper's full-PPR projection (RotoWire)", render: r => fmt2(num(r["Sleeper PPR"])) },
-  { key: "Props − Sleeper", label: "Δ Sleeper", type: "num", title: "Proj PPR minus Sleeper PPR. Positive = betting market is higher than Sleeper", render: r => diffCell(r["Props − Sleeper"]) },
-  { key: "Anytime TD %", label: "TD %", type: "num", title: "No-vig probability of an anytime rush/rec TD", render: r => num(r["Anytime TD %"]) === null ? "" : `${(+r["Anytime TD %"]).toFixed(0)}%` },
-
-  { key: "Exp Pass Yds", label: "Pass Yds", type: "num", group: "proj", gl: true, render: r => z(r["Exp Pass Yds"], fmt1) },
-  { key: "Exp Pass TD", label: "Pass TD", type: "num", group: "proj", render: r => z(r["Exp Pass TD"], fmt2) },
-  { key: "Exp INT", label: "INT", type: "num", group: "proj", render: r => z(r["Exp INT"], fmt2) },
-  { key: "Exp Rush Yds", label: "Rush Yds", type: "num", group: "proj", render: r => z(r["Exp Rush Yds"], fmt1) },
-  { key: "Exp Rec", label: "Rec", type: "num", group: "proj", render: r => z(r["Exp Rec"], fmt2) },
-  { key: "Exp Rec Yds", label: "Rec Yds", type: "num", group: "proj", render: r => z(r["Exp Rec Yds"], fmt1) },
-  { key: "Exp TDs", label: "Rush/Rec TD", type: "num", group: "proj", render: r => z(r["Exp TDs"], fmt2) },
-];
-const ODDS_STATS = ["Pass Yds", "Pass TDs", "INTs", "Rush Yds", "Receptions", "Rec Yds", "Anytime TD", "UD Fantasy Pts"];
-for (const s of ODDS_STATS) {
-  COLS.push({ key: `${s} Line`, label: "Line", type: "num", group: "odds", stat: s, gl: true });
-  COLS.push({ key: `${s} Over`, label: "Over", type: "odds", group: "odds", stat: s, title: "Sorted by implied probability", render: r => oddsCell(r[`${s} Over`]) });
-  COLS.push({ key: `${s} Under`, label: "Under", type: "odds", group: "odds", stat: s, title: "Sorted by implied probability", render: r => oddsCell(r[`${s} Under`]) });
-}
-
-function diffCell(v) {
-  const n = num(v); if (n === null) return "";
-  return `<span class="${n > 0 ? "fav" : n < 0 ? "dog" : ""}">${n > 0 ? "+" : ""}${n.toFixed(2)}</span>`;
-}
-function z(v, f) { const n = num(v); return n === null || n === 0 ? `<span class="na">–</span>` : f(n); }
+const fmt = d => v => { const n = num(v); return n === null ? "" : n.toFixed(d); };
+const fmt1 = fmt(1), fmt2 = fmt(2);
 function oddsCell(a) {
   const v = num(a); if (v === null) return "";
   return `<span class="${v < 0 ? "fav" : "dog"}">${v > 0 ? "+" + v : v}</span>`;
 }
-const MAX_PROJ = Math.max(...ROWS.map(r => num(r["Proj PPR"]) || 0), 1);
-function projCell(r) {
-  const v = num(r["Proj PPR"]);
-  const w = Math.max(0, Math.min(100, v / MAX_PROJ * 100));
-  return `<div class="bar" style="width:${w}%"></div><span>${fmt2(v)}</span>`;
+function signedCell(v, d = 2) {
+  const n = num(v); if (n === null) return "";
+  return `<span class="${n > 0 ? "fav" : n < 0 ? "dog" : ""}">${n > 0 ? "+" : ""}${n.toFixed(d)}</span>`;
 }
+const pctCell = v => { const n = num(v); return n === null ? "" : `${n.toFixed(0)}%`; };
 function kickoff(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
+  return new Date(iso).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
 }
+const POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DL", "DE", "DT", "LB", "OLB", "ILB", "DB", "CB", "S", "SS", "FS"];
+const posSort = (a, b) => ((POS_ORDER.indexOf(a) + 1 || 99) - (POS_ORDER.indexOf(b) + 1 || 99)) || a.localeCompare(b);
 
-// ---- state ------------------------------------------------------------------
-const state = {
-  q: "", pos: new Set(), team: "", game: "", groupBy: "",
-  sortKey: "Proj PPR", sortDir: -1, show: { proj: true, odds: true }, collapsed: new Set(),
+// ---- rankings columns (built from the chosen sites and stats) ----------------------------
+const SITE_NAMES = { UD: "Underdog", SL: "Sleeper", FP: "FantasyPros", Avg: "Average" };
+const SITE_TITLES = {
+  UD: "Underdog: full-PPR projection built from Underdog's lines and odds",
+  SL: "Sleeper: full-PPR projection built from Sleeper Picks' lines and odds",
+  FP: "FantasyPros consensus projection (public pages only show the top 10 per position)",
 };
-try { Object.assign(state, JSON.parse(localStorage.getItem("pprUi") || "{}"), { pos: new Set(), collapsed: new Set(), q: "", team: "", game: "" }); } catch (e) {}
-function save() {
-  try { localStorage.setItem("pprUi", JSON.stringify({ groupBy: state.groupBy, sortKey: state.sortKey, sortDir: state.sortDir, show: state.show })); } catch (e) {}
+const SITES = META.sites || ["UD"];
+const BANDS = META.bands || [];
+const CORE_STATS = ["Fantasy Pts", "Pass Yds", "Pass TDs", "INTs", "Rush Yds", "Receptions", "Rec Yds", "Anytime TD"];
+const NO_TD = "Props, no TD line";
+
+// The ranking projection: one site's, or the average of the selected sites that have one (r._avg)
+const projKey = sites => sites.length > 1 ? "_avg" : `${sites[0]} Proj PPR`;
+const projOf = (r, site) => site === "Avg" ? r._avg : num(r[`${site} Proj PPR`]);
+const MAX_PROJ = Math.max(1, ...DATA.rows.flatMap(r => SITES.map(s => num(r[`${s} Proj PPR`]) || 0)));
+function projCell(r, site) {
+  const v = projOf(r, site);
+  if (v === null) return "";
+  const src = r[`${site} Proj Source`];
+  let flag = "";
+  if (src === NO_TD) flag = `<span class="flag" title="${SITE_NAMES[site]} has no anytime-TD line for this player, so this projection has no touchdown points and runs low">*</span>`;
+  else if (src && src !== "Props" && site !== "FP") flag = `<span class="flag" title="No stat lines: based on ${SITE_NAMES[site]}'s ${esc(src)}">†</span>`;
+  else if (site === "Avg") {
+    const missing = rp.sites.filter(s => num(r[`${s} Proj PPR`]) === null);
+    if (missing.length) flag = `<span class="flag" title="No projection from ${missing.map(s => SITE_NAMES[s]).join(" or ")}; averaged over the rest">†</span>`;
+  }
+  const w = Math.max(0, Math.min(100, v / MAX_PROJ * 100));
+  return `<div class="bar" style="width:${w}%"></div><span>${fmt2(v)}${flag}</span>`;
 }
 
-// ---- controls -------------------------------------------------------------------
-const $ = id => document.getElementById(id);
-$("sub").textContent = `${ROWS.length} players · Underdog lines pulled ${new Date(DATA.generated).toLocaleString()} · click any column to sort`;
+function rankCols(p) {
+  const sites = SITES.filter(s => p.sites.includes(s));
+  const cols = [
+    { key: "_rank", label: "#", type: "num", cls: "stick c-rank", title: "Rank by the projection of the selected site(s)" },
+    { key: "Player", label: "Player", type: "text", cls: "stick c-player" },
+    { key: "Pos", label: "Pos", type: "text", render: r => `<span class="pos ${esc(r.Pos)}">${esc(r.Pos)}</span>` },
+    { key: "_posRank", label: "Pos Rk", type: "num", title: "Rank within position", render: r => r._posRank ? esc(r.Pos + r._posRank) : "" },
+    { key: "Team", label: "Team", type: "text" },
+    { key: "Opp", label: "Opp", type: "text" },
+    { key: "Kickoff (UTC)", label: "Kickoff", type: "time", render: r => kickoff(r["Kickoff (UTC)"]) },
+  ];
+  const projSites = sites.length > 1 ? [...sites, "Avg"] : sites;
+  projSites.forEach((s, i) => cols.push({
+    key: s === "Avg" ? "_avg" : `${s} Proj PPR`, band: "PPR projection", sub: SITE_NAMES[s], site: s, label: "", type: "num",
+    tdCls: "proj", gl: i === 0, render: r => projCell(r, s),
+    title: s === "Avg" ? "Average of the selected sites' projections" : SITE_TITLES[s],
+  }));
+  for (const b of BANDS) {
+    if (!p.stats.includes(b.label)) continue;
+    sites.forEach((s, si) => {
+      const base = { band: b.label, sub: SITE_NAMES[s], site: s };
+      const k = f => `${b.label} ${s} ${f}`;
+      if (s === "FP") {   // a projection, not a line: one value per stat
+        if (b.fp) cols.push({ ...base, key: k("Proj"), label: "Proj", type: "num", gl: si === 0, title: SITE_TITLES.FP, render: r => { const n = num(r[k("Proj")]); return n === null ? "" : String(+n.toFixed(2)); } });
+        return;
+      }
+      cols.push({ ...base, key: k("Line"), label: "Line", type: "num", gl: si === 0, subStart: true });
+      if (p.show.odds) {
+        cols.push({ ...base, key: k("Over"), label: "Over", type: "odds", title: "Sorted by implied probability", render: r => oddsCell(r[k("Over")]) });
+        cols.push({ ...base, key: k("Under"), label: "Under", type: "odds", title: "Sorted by implied probability", render: r => oddsCell(r[k("Under")]) });
+      }
+      if (b.pct) cols.push({ ...base, key: k("%"), label: "Prob", type: "num", title: "No-vig probability of an anytime rush/rec TD", render: r => pctCell(r[k("%")]) });
+      if (b.exp && p.show.exp) cols.push({ ...base, key: k("Exp"), label: "Exp", type: "num", tdCls: "exp", title: "Expected value used in the PPR projection", render: r => fmt2(r[k("Exp")]) });
+    });
+  }
+  return cols;
+}
 
-const POS = ["QB", "RB", "WR", "TE"];
-$("posChips").innerHTML = ["All", ...POS].map(p => `<button class="chip" data-pos="${p}">${p}</button>`).join("");
+// ---- comparison columns --------------------------------------------------------------
+const CMP_COLS = [
+  { key: "Player", label: "Player", type: "text", cls: "stick c-player" },
+  { key: "Pos", label: "Pos", type: "text", render: r => `<span class="pos ${esc(r.Pos)}">${esc(r.Pos)}</span>` },
+  { key: "Team", label: "Team", type: "text" },
+  { key: "Opp", label: "Opp", type: "text" },
+  { key: "Kickoff (UTC)", label: "Kickoff", type: "time", render: r => kickoff(r["Kickoff (UTC)"]) },
+  { key: "Stat", label: "Stat", type: "text", gl: true },
+  { key: "Sites", label: "On", type: "text", render: r => `<span class="sites ${esc(r.Sites)}">${esc(r.Sites)}</span>` },
+  { key: "UD Line", label: "Line", type: "num", band: "Underdog", site: "UD", gl: true },
+  { key: "UD Over", label: "Over", type: "odds", band: "Underdog", site: "UD", render: r => oddsCell(r["UD Over"]) },
+  { key: "UD Under", label: "Under", type: "odds", band: "Underdog", site: "UD", render: r => oddsCell(r["UD Under"]) },
+  { key: "UD Over %", label: "Over %", type: "num", band: "Underdog", site: "UD", title: "No-vig probability of the over", render: r => pctCell(r["UD Over %"]) },
+  { key: "SL Line", label: "Line", type: "num", band: "Sleeper", site: "SL", gl: true },
+  { key: "SL Over", label: "Over", type: "odds", band: "Sleeper", site: "SL", render: r => oddsCell(r["SL Over"]), title: "Payout multiplier converted to American odds" },
+  { key: "SL Under", label: "Under", type: "odds", band: "Sleeper", site: "SL", render: r => oddsCell(r["SL Under"]), title: "Payout multiplier converted to American odds" },
+  { key: "SL Over %", label: "Over %", type: "num", band: "Sleeper", site: "SL", title: "No-vig probability of the over", render: r => pctCell(r["SL Over %"]) },
+  { key: "Line Δ (SL−UD)", label: "Line", type: "num", band: "Sleeper − Underdog", gl: true, title: "Sleeper line minus Underdog line", render: r => signedCell(r["Line Δ (SL−UD)"], 1) },
+  { key: "Over % Δ (SL−UD)", label: "Over %", type: "num", band: "Sleeper − Underdog", title: "Sleeper over % minus Underdog over % (points)", render: r => signedCell(r["Over % Δ (SL−UD)"], 1) },
+  { key: "SL Pick Popularity %", label: "Popularity", type: "num", band: "Sleeper pick data", toggle: "picks", gl: true, render: r => pctCell(r["SL Pick Popularity %"]) },
+  { key: "SL Picks Over", label: "Picks O", type: "num", band: "Sleeper pick data", toggle: "picks" },
+  { key: "SL Picks Under", label: "Picks U", type: "num", band: "Sleeper pick data", toggle: "picks" },
+  { key: "SL Recent Over %", label: "Recent over", type: "num", band: "Sleeper pick data", toggle: "picks", title: "Share of recent games (per Sleeper) above the current Sleeper line", render: r => pctCell(r["SL Recent Over %"]) },
+  { key: "SL Recent Results", label: "Recent results (oldest → newest)", type: "text", band: "Sleeper pick data", toggle: "picks", tdCls: "recent", sortable: false },
+];
+
+const HAS_SLEEPER = SITES.includes("SL");
+const VIEWS = {
+  rankings: {
+    rows: DATA.rows,
+    cols: p => rankCols(p),
+    groups: [["", "None"], ["Pos", "Position"], ["Team", "Team"], ["Game", "Game"]],
+    toggles: [["odds", "Odds"], ["exp", "Expected stats"]],
+    defaults: { sortKey: "_rank", sortDir: 1, groupBy: "", show: { odds: true, exp: false }, sites: SITES.slice(), stats: CORE_STATS.slice() },
+  },
+  compare: {
+    rows: DATA.comparison || [],
+    cols: p => CMP_COLS.filter(c => !c.toggle || p.show[c.toggle]),
+    groups: [["", "None"], ["Player", "Player"], ["Stat", "Stat"], ["Pos", "Position"], ["Team", "Team"], ["Game", "Game"]],
+    toggles: [["picks", "Sleeper pick data"]],
+    defaults: { sortKey: "Kickoff (UTC)", sortDir: 1, groupBy: "Player", show: { picks: true } },
+  },
+};
+
+// ---- state ------------------------------------------------------------------------
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem("pprUi3") || "{}"); } catch (e) {}
+const prefs = {};
+for (const [name, v] of Object.entries(VIEWS)) {
+  const s = (saved.views || {})[name] || {};
+  prefs[name] = { ...v.defaults, ...s, show: { ...v.defaults.show, ...(s.show || {}) }, collapsed: new Set() };
+}
+const rp = prefs.rankings;
+rp.sites = (rp.sites || []).filter(s => SITES.includes(s));
+if (!rp.sites.length) rp.sites = SITES.slice();
+rp.stats = (rp.stats || []).filter(l => BANDS.some(b => b.label === l));
+
+const state = { view: VIEWS[saved.view] ? saved.view : "rankings", q: "", pos: new Set(), team: "", game: "", stat: "", sites: "Both" };
+function save() {
+  try {
+    const views = {};
+    for (const [n, p] of Object.entries(prefs)) {
+      const { collapsed, ...rest } = p;
+      views[n] = rest;
+    }
+    localStorage.setItem("pprUi3", JSON.stringify({ view: state.view, views }));
+  } catch (e) {}
+}
+
+// ---- controls ---------------------------------------------------------------------------
+const fpNote = META.fantasypros_week ? ` · FantasyPros week ${META.fantasypros_week} (top 10 per position)` : "";
+$("sub").textContent = `Lines pulled ${new Date(DATA.generated).toLocaleString()}${fpNote} · click any column to sort`;
+
+function fillSelect(el, first, values, label = v => v) {
+  const cur = el.value;
+  el.innerHTML = `<option value="">${first}</option>` + values.map(v => `<option value="${esc(v)}">${esc(label(v))}</option>`).join("");
+  el.value = values.includes(cur) ? cur : "";
+}
+function setupView() {
+  const v = VIEWS[state.view], p = prefs[state.view];
+  for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", t.dataset.view === state.view);
+  $("tbl").className = "view-" + state.view;
+  $("statCtl").hidden = state.view !== "compare";
+  $("sitesCtl").hidden = state.view !== "compare" || !HAS_SLEEPER;
+  $("rankBar").hidden = state.view !== "rankings";
+  $("siteCtl").hidden = SITES.length < 2;
+
+  const positions = [...new Set(v.rows.map(r => r.Pos).filter(Boolean))].sort(posSort);
+  for (const x of [...state.pos]) if (!positions.includes(x)) state.pos.delete(x);
+  $("posChips").innerHTML = ["All", ...positions].map(x => `<button class="chip" data-pos="${esc(x)}">${esc(x)}</button>`).join("");
+
+  fillSelect($("team"), "All teams", [...new Set(v.rows.map(r => r.Team).filter(Boolean))].sort());
+  const games = [...new Map(v.rows.filter(r => r.Game).map(r => [r.Game, r["Kickoff (UTC)"]])).entries()]
+    .sort((a, b) => (a[1] || "").localeCompare(b[1] || "") || a[0].localeCompare(b[0]));
+  const gameTime = Object.fromEntries(games);
+  fillSelect($("game"), "All games", games.map(g => g[0]), g => `${g} · ${kickoff(gameTime[g])}`);
+  if (state.view === "compare") fillSelect($("stat"), "All stats", [...new Set(v.rows.map(r => r.Stat))].sort());
+  state.team = $("team").value; state.game = $("game").value; state.stat = $("stat").value;
+
+  $("groupBy").innerHTML = v.groups.map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
+  $("groupBy").value = p.groupBy;
+  $("toggles").innerHTML = v.toggles.map(([k, l]) => `<button class="chip" data-toggle="${k}">${l}</button>`).join("");
+
+  if (state.view === "rankings") {
+    $("siteChips").innerHTML = SITES.map(s => `<button class="chip site-${s}" data-site="${s}">${SITE_NAMES[s]}</button>`).join("");
+    $("statChips").innerHTML = BANDS.map(b => `<button class="chip" data-stat="${esc(b.label)}">${esc(b.label)}</button>`).join("")
+      + `<button class="chip link" data-stats="core">Core</button><button class="chip link" data-stats="all">All</button><button class="chip link" data-stats="none">None</button>`;
+  }
+}
+
+document.querySelector(".tabs").addEventListener("click", e => {
+  const t = e.target.closest(".tab"); if (!t || t.dataset.view === state.view) return;
+  state.view = t.dataset.view; save(); setupView(); render();
+});
 $("posChips").addEventListener("click", e => {
-  const p = e.target.dataset.pos; if (!p) return;
-  if (p === "All") state.pos.clear(); else state.pos.has(p) ? state.pos.delete(p) : state.pos.add(p);
+  const x = e.target.dataset.pos; if (!x) return;
+  if (x === "All") state.pos.clear(); else state.pos.has(x) ? state.pos.delete(x) : state.pos.add(x);
   render();
 });
-const uniq = k => [...new Set(ROWS.map(r => r[k]).filter(Boolean))].sort();
-$("team").innerHTML += uniq("Team").map(t => `<option>${t}</option>`).join("");
-const games = [...new Map(ROWS.map(r => [r.Game, r["Kickoff (UTC)"]])).entries()].filter(g => g[0]).sort((a, b) => (a[1] || "").localeCompare(b[1] || "") || a[0].localeCompare(b[0]));
-$("game").innerHTML += games.map(([g, t]) => `<option value="${g}">${g} · ${kickoff(t)}</option>`).join("");
-
+$("toggles").addEventListener("click", e => {
+  const k = e.target.dataset.toggle; if (!k) return;
+  const p = prefs[state.view]; p.show[k] = !p.show[k]; save(); render();
+});
+$("siteChips").addEventListener("click", e => {
+  const s = e.target.dataset.site; if (!s) return;
+  const on = rp.sites.includes(s);
+  if (on && rp.sites.length === 1) return;           // keep at least one site
+  rp.sites = on ? rp.sites.filter(x => x !== s) : SITES.filter(x => x === s || rp.sites.includes(x));
+  if (rp.sortKey.endsWith(" Proj PPR") && !rankCols(rp).some(c => c.key === rp.sortKey)) { rp.sortKey = "_rank"; rp.sortDir = 1; }
+  save(); render();
+});
+$("statChips").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.stats === "all") rp.stats = BANDS.map(x => x.label);
+  else if (b.dataset.stats === "none") rp.stats = [];
+  else if (b.dataset.stats === "core") rp.stats = CORE_STATS.slice();
+  else if (b.dataset.stat) {
+    const l = b.dataset.stat;
+    rp.stats = rp.stats.includes(l) ? rp.stats.filter(x => x !== l) : BANDS.map(x => x.label).filter(x => x === l || rp.stats.includes(x));
+  }
+  save(); render();
+});
 $("q").addEventListener("input", e => { state.q = e.target.value.trim().toLowerCase(); render(); });
-$("team").addEventListener("change", e => { state.team = e.target.value; render(); });
-$("game").addEventListener("change", e => { state.game = e.target.value; render(); });
-$("groupBy").value = state.groupBy;
-$("groupBy").addEventListener("change", e => { state.groupBy = e.target.value; state.collapsed.clear(); save(); render(); });
-for (const [id, k] of [["showProj", "proj"], ["showOdds", "odds"]]) {
-  $(id).addEventListener("click", () => { state.show[k] = !state.show[k]; save(); render(); });
-}
+for (const id of ["team", "game", "stat", "sites"]) $(id).addEventListener("change", e => { state[id] = e.target.value; render(); });
+$("groupBy").addEventListener("change", e => { const p = prefs[state.view]; p.groupBy = e.target.value; p.collapsed.clear(); save(); render(); });
 
-// ---- sorting ----------------------------------------------------------------------
+// ---- sorting ------------------------------------------------------------------------------
 function sortVal(col, r) {
   const v = r[col.key];
   switch (col.type) {
-    case "text": return v ? String(v).toLowerCase() : null;
+    case "text": return v === "" || v == null ? null : String(v).toLowerCase();
     case "time": return v || null;
     case "odds": return impliedProb(v);
-    case "posrank": return num(String(v || "").replace(/^\D+/, ""));
     default: return num(v);
   }
 }
 function cmp(col, dir) {
   return (a, b) => {
     const x = sortVal(col, a), y = sortVal(col, b);
-    if (x === null && y === null) return a.Rank - b.Rank;
+    if (x === null && y === null) return 0;
     if (x === null) return 1;          // blanks always last
     if (y === null) return -1;
-    if (x < y) return -dir;
-    if (x > y) return dir;
-    return a.Rank - b.Rank;
+    return x < y ? -dir : x > y ? dir : 0;
   };
 }
 
-// ---- render ----------------------------------------------------------------------------
-function visibleCols() { return COLS.filter(c => !c.group || state.show[c.group]); }
+// Rank players by the projection of the selected site(s) (average when both)
+function assignRanks(rows) {
+  for (const r of rows) {
+    const vals = rp.sites.map(s => num(r[`${s} Proj PPR`])).filter(v => v !== null);
+    r._avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  }
+  const key = projKey(rp.sites);
+  const ranked = rows.filter(r => num(r[key]) !== null).sort((a, b) => num(b[key]) - num(a[key]));
+  for (const r of rows) { r._rank = null; r._posRank = null; }
+  const posCount = {};
+  ranked.forEach((r, i) => { r._rank = i + 1; posCount[r.Pos] = (posCount[r.Pos] || 0) + 1; r._posRank = posCount[r.Pos]; });
+}
 
+// ---- render -------------------------------------------------------------------------------
+const PAGE = 1500;
+let limit = PAGE;
+const cellCls = c => [c.cls || "", c.gl ? "gl" : "", c.tdCls || "", c.type === "text" || c.type === "time" ? "txt" : "", c.site ? "site-" + c.site : ""].join(" ");
+
+// Header rows: band (stat) -> sub (site) -> label (Line/Over/...). Columns without a band span all rows.
 function renderHead(cols) {
-  const hasOdds = cols.some(c => c.group === "odds");
-  const th = c => {
-    const sorted = c.key === state.sortKey;
-    const arrow = sorted ? (state.sortDir < 0 ? "▼" : "▲") : "";
-    const cls = ["sortable", c.cls || "", c.gl ? "gl" : "", sorted ? "sorted" : "", c.type === "text" || c.type === "time" ? "txt" : ""].join(" ");
-    return `<th class="${cls}" data-key="${c.key}" title="${c.title || ""}"${hasOdds && !c.stat ? ' rowspan="2"' : ""}>${c.label}<span class="arrow">${arrow}</span></th>`;
+  const p = prefs[state.view];
+  const depth = cols.some(c => c.sub && c.label) ? 3 : cols.some(c => c.band) ? 2 : 1;
+  const th = (c, text, rowspan) => {
+    const sortable = c.sortable !== false;
+    const sorted = sortable && c.key === p.sortKey;
+    const arrow = sorted ? (p.sortDir < 0 ? "▼" : "▲") : "";
+    const cls = [sortable ? "sortable" : "", sorted ? "sorted" : "", cellCls(c)].join(" ");
+    const rs = rowspan > 1 ? ` rowspan="${rowspan}"` : "";
+    return `<th class="${cls}" ${sortable ? `data-key="${esc(c.key)}"` : ""} title="${esc(c.title || "")}"${rs}>${esc(text)}<span class="arrow">${arrow}</span></th>`;
   };
-  if (!hasOdds) return `<tr>${cols.map(th).join("")}</tr>`;
-  // two header rows: odds columns grouped under their stat name
-  let top = "", bottom = "";
-  for (let i = 0; i < cols.length; i++) {
-    const c = cols[i];
-    if (!c.stat) { top += th(c); continue; }
-    if (c.label === "Line") top += `<th class="grp" colspan="3">${c.stat}</th>`;
-    bottom += th(c);
+  const runs = (list, keyFn) => {   // consecutive runs of equal key
+    const out = [];
+    for (const c of list) {
+      const k = keyFn(c);
+      if (out.length && out[out.length - 1].k === k) out[out.length - 1].cols.push(c);
+      else out.push({ k, cols: [c] });
+    }
+    return out;
+  };
+  const rows = Array.from({ length: depth }, () => "");
+  for (const run of runs(cols, c => c.band || "\u0000" + c.key)) {
+    const c0 = run.cols[0];
+    if (!c0.band) { rows[0] += th(c0, c0.label, depth); continue; }
+    rows[0] += `<th class="band" colspan="${run.cols.length}">${esc(c0.band)}</th>`;
+    if (depth === 2) { rows[1] += run.cols.map(c => th(c, c.label || c.sub, 1)).join(""); continue; }
+    for (const sub of runs(run.cols, c => c.sub || "\u0000" + c.key)) {
+      const s0 = sub.cols[0];
+      if (!s0.sub) { rows[1] += th(s0, s0.label, 2); continue; }
+      if (sub.cols.length === 1 && !s0.label) { rows[1] += th(s0, s0.sub, 2); continue; }
+      rows[1] += `<th class="subband site-${s0.site || ""}" colspan="${sub.cols.length}">${esc(s0.sub)}</th>`;
+      rows[2] += sub.cols.map(c => th(c, c.label, 1)).join("");
+    }
   }
-  return `<tr>${top}</tr><tr>${bottom}</tr>`;
+  return rows.map(r => `<tr>${r}</tr>`).join("");
 }
-
 function renderRow(r, cols) {
-  return `<tr class="p">${cols.map(c => {
-    const cls = [c.cls || "", c.gl ? "gl" : "", c.key === "Proj PPR" ? "proj" : "", c.type === "text" || c.type === "time" ? "txt" : ""].join(" ");
-    const v = c.render ? c.render(r) : (r[c.key] ?? "");
-    return `<td class="${cls}">${v}</td>`;
-  }).join("")}</tr>`;
+  return `<tr class="p">${cols.map(c => `<td class="${cellCls(c)}">${c.render ? c.render(r) : esc(r[c.key] ?? "")}</td>`).join("")}</tr>`;
 }
 
-function render() {
-  for (const b of $("posChips").children) {
-    const p = b.dataset.pos;
-    b.setAttribute("aria-pressed", p === "All" ? state.pos.size === 0 : state.pos.has(p));
+function filteredRows() {
+  const v = VIEWS[state.view];
+  let rows = v.rows;
+  if (state.view === "rankings") {
+    const key = projKey(rp.sites);
+    rows = rows.filter(r => num(r[key]) !== null);
   }
-  $("showProj").setAttribute("aria-pressed", state.show.proj);
-  $("showOdds").setAttribute("aria-pressed", state.show.odds);
-
-  const cols = visibleCols();
-  const sortCol = COLS.find(c => c.key === state.sortKey) || COLS[7];
-  let rows = ROWS.filter(r =>
+  return rows.filter(r =>
     (!state.pos.size || state.pos.has(r.Pos)) &&
     (!state.team || r.Team === state.team) &&
     (!state.game || r.Game === state.game) &&
-    (!state.q || r.Player.toLowerCase().includes(state.q)));
-  rows.sort(cmp(sortCol, state.sortDir));
-  $("count").textContent = `${rows.length} of ${ROWS.length} players`;
+    (!state.q || String(r.Player).toLowerCase().includes(state.q)) &&
+    (state.view !== "compare" || ((!state.stat || r.Stat === state.stat) && (!state.sites || !HAS_SLEEPER || r.Sites === state.sites))));
+}
+
+function render(keepLimit) {
+  if (!keepLimit) limit = PAGE;
+  const v = VIEWS[state.view], p = prefs[state.view];
+  for (const b of $("posChips").children) {
+    const x = b.dataset.pos;
+    b.setAttribute("aria-pressed", x === "All" ? state.pos.size === 0 : state.pos.has(x));
+  }
+  for (const b of $("toggles").children) b.setAttribute("aria-pressed", !!p.show[b.dataset.toggle]);
+  if (HAS_SLEEPER) $("sites").value = state.sites;
+  if (state.view === "rankings") {
+    for (const b of $("siteChips").children) b.setAttribute("aria-pressed", rp.sites.includes(b.dataset.site));
+    for (const b of $("statChips").children) if (b.dataset.stat) b.setAttribute("aria-pressed", rp.stats.includes(b.dataset.stat));
+    assignRanks(v.rows);
+  }
+
+  const cols = v.cols(p);
+  const sortCol = cols.find(c => c.key === p.sortKey) || cols[0];
+  const rows = filteredRows().sort(cmp(sortCol, p.sortKey === sortCol.key ? p.sortDir : 1));
+  const total = state.view === "rankings" ? v.rows.filter(r => num(r[projKey(rp.sites)]) !== null).length : v.rows.length;
+  $("count").textContent = `${rows.length.toLocaleString()} of ${total.toLocaleString()} ${state.view === "compare" ? "props" : "players"}`;
 
   const tbl = $("tbl");
-  tbl.querySelectorAll("tbody").forEach(t => t.remove());
+  tbl.querySelectorAll("tbody, tfoot").forEach(t => t.remove());
   $("thead").innerHTML = renderHead(cols);
 
   if (!rows.length) {
-    tbl.insertAdjacentHTML("beforeend", `<tbody><tr><td class="empty" colspan="${cols.length}">No players match these filters.</td></tr></tbody>`);
+    tbl.insertAdjacentHTML("beforeend", `<tbody><tr><td class="empty" colspan="${cols.length}">No rows match these filters.</td></tr></tbody>`);
     return;
   }
 
-  if (!state.groupBy) {
-    tbl.insertAdjacentHTML("beforeend", `<tbody>${rows.map(r => renderRow(r, cols)).join("")}</tbody>`);
-    return;
+  let html = "", shown = 0, expanded = rows.length;
+  if (!p.groupBy) {
+    const slice = rows.slice(0, limit);
+    shown = slice.length;
+    html = `<tbody>${slice.map(r => renderRow(r, cols)).join("")}</tbody>`;
+  } else {
+    const groups = new Map();
+    for (const r of rows) {
+      const k = r[p.groupBy] || "—";
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(r);
+    }
+    let keys = [...groups.keys()];
+    if (p.groupBy === "Pos") keys.sort(posSort);
+    else if (p.groupBy === "Game") keys.sort((a, b) => (groups.get(a)[0]["Kickoff (UTC)"] || "").localeCompare(groups.get(b)[0]["Kickoff (UTC)"] || "") || a.localeCompare(b));
+    else if (p.groupBy !== "Player") keys.sort();   // Player groups follow the current sort
+    const pk = projKey(rp.sites);
+    for (const k of keys) {
+      const g = groups.get(k);
+      const collapsed = p.collapsed.has(k);
+      let meta = `${g.length} ${state.view === "compare" ? "prop" : "player"}${g.length === 1 ? "" : "s"}`;
+      if (state.view === "rankings") {
+        const t = g.reduce((a, r) => a + (num(r[pk]) || 0), 0);
+        meta += ` · total ${t.toFixed(1)} · avg ${(t / g.length).toFixed(1)} proj PPR`;
+      } else {
+        const both = g.filter(r => r.Sites === "Both"), diff = both.filter(r => num(r["Line Δ (SL−UD)"]));
+        if (both.length) meta += ` · ${both.length} on both sites · ${diff.length} with different lines`;
+      }
+      html += `<tbody><tr class="gh${collapsed ? " collapsed" : ""}" data-group="${esc(k)}"><td colspan="${cols.length}"><span class="caret">▾</span>${esc(k)}<span class="gmeta">${meta}</span></td></tr>`;
+      if (collapsed) {
+        expanded -= g.length;
+      } else {
+        const slice = g.slice(0, Math.max(0, limit - shown));   // past the limit, groups show headers only
+        shown += slice.length;
+        html += slice.map(r => renderRow(r, cols)).join("");
+      }
+      html += `</tbody>`;
+    }
   }
-
-  const groups = new Map();
-  for (const r of rows) {
-    const k = r[state.groupBy] || "—";
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(r);
-  }
-  let keys = [...groups.keys()];
-  if (state.groupBy === "Pos") keys.sort((a, b) => POS.indexOf(a) - POS.indexOf(b));
-  else if (state.groupBy === "Game") keys.sort((a, b) => (groups.get(a)[0]["Kickoff (UTC)"] || "").localeCompare(groups.get(b)[0]["Kickoff (UTC)"] || "") || a.localeCompare(b));
-  else keys.sort();
-
-  let html = "";
-  for (const k of keys) {
-    const g = groups.get(k);
-    const projs = g.map(r => num(r["Proj PPR"]) || 0);
-    const total = projs.reduce((a, b) => a + b, 0);
-    const collapsed = state.collapsed.has(k);
-    const meta = `${g.length} player${g.length === 1 ? "" : "s"} · total ${total.toFixed(1)} · avg ${(total / g.length).toFixed(1)} proj PPR`;
-    html += `<tbody><tr class="gh${collapsed ? " collapsed" : ""}" data-group="${k}"><td colspan="${cols.length}"><span class="caret">▾</span>${k}<span class="gmeta">${meta}</span></td></tr>`;
-    if (!collapsed) html += g.map(r => renderRow(r, cols)).join("");
-    html += `</tbody>`;
+  if (shown < expanded) {
+    html += `<tfoot><tr><td class="more" colspan="${cols.length}"><button id="more">Show more (${(expanded - shown).toLocaleString()} left)</button></td></tr></tfoot>`;
   }
   tbl.insertAdjacentHTML("beforeend", html);
 }
 
 $("thead").addEventListener("click", e => {
   const th = e.target.closest("th[data-key]"); if (!th) return;
-  const col = COLS.find(c => c.key === th.dataset.key);
-  if (state.sortKey === col.key) state.sortDir *= -1;
-  else { state.sortKey = col.key; state.sortDir = (col.type === "text" || col.type === "time" || col.type === "posrank" || col.key === "Rank") ? 1 : -1; }
+  const p = prefs[state.view];
+  const col = VIEWS[state.view].cols(p).find(c => c.key === th.dataset.key);
+  if (!col) return;
+  if (p.sortKey === col.key) p.sortDir *= -1;
+  else { p.sortKey = col.key; p.sortDir = (["text", "time"].includes(col.type) || ["_rank", "_posRank"].includes(col.key)) ? 1 : -1; }
   save(); render();
 });
 $("tbl").addEventListener("click", e => {
+  if (e.target.id === "more") { limit += PAGE; render(true); return; }
   const gh = e.target.closest("tr.gh"); if (!gh) return;
-  const k = gh.dataset.group;
-  state.collapsed.has(k) ? state.collapsed.delete(k) : state.collapsed.add(k);
-  render();
+  const p = prefs[state.view], k = gh.dataset.group;
+  p.collapsed.has(k) ? p.collapsed.delete(k) : p.collapsed.add(k);
+  render(true);
 });
 
+setupView();
 render();
 </script>
 </body>

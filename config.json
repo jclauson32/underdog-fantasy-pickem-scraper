@@ -1,8 +1,9 @@
 {
     "ud_pickem_url": "https://api.underdogfantasy.com/v1/over_under_lines",
     "ud_post_url": "https://api.underdogfantasy.com/v5/entry_slips",
-    "sleeper_state_url": "https://api.sleeper.app/v1/state/nfl",
-    "sleeper_projections_url": "https://api.sleeper.app/projections/nfl/{season}/{week}?season_type={season_type}&position%5B%5D=QB&position%5B%5D=RB&position%5B%5D=WR&position%5B%5D=TE",
+    "sleeper_lines_url": "https://api.sleeper.app/lines/available",
+    "sleeper_players_url": "https://api.sleeper.app/v1/players/nfl",
+    "fantasypros_projections_url": "https://www.fantasypros.com/nfl/projections/{position}.php?scoring=PPR",
     "headers": {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
         "Accept-Language": "en-US,en;q=0.9",
