@@ -6,10 +6,20 @@ players ranked by projected **full-PPR** fantasy points, with the line and over/
 No installs needed (Python 3 standard library only):
 
 ```
-python3 ppr_rankings.py                  # -> nfl_ppr_rankings.xlsx, nfl_ppr_rankings.csv, nfl_ppr_rankings_all_props.csv
+python3 ppr_rankings.py                  # -> nfl_ppr_rankings.xlsx/.html/.csv + nfl_ppr_rankings_all_props.csv
+python3 ppr_rankings.py --open           # same, then opens the interactive page in your browser
 python3 ppr_rankings.py -o week11.xlsx   # custom file name
 python3 ppr_rankings.py --no-csv         # xlsx only
 ```
+
+**Interactive page** (`nfl_ppr_rankings.html`): a single offline file, no server needed. You can
+- click any column header to sort by it (projected PPR, pass yds, TD %, any line or odds); click again to reverse
+- filter by position (multi-select), team, game, or player name
+- group by position, team, or game (collapsible, with group totals/averages); sorting applies inside each group
+- show or hide the projection and lines/odds column sets
+
+Odds columns sort by implied probability, so "descending" puts the most likely outcome first.
+The page template lives in `templates/rankings.html`.
 
 **Sheets**
 - **PPR Rankings**: overall rank, positional rank (QB1, RB3, ...), team/opponent, kickoff, projected PPR,

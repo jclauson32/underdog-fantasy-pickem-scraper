@@ -3,3 +3,5 @@ nfl_ppr_rankings*
 *.csv
 __pycache__/
 .venv/
+*.html
+!templates/*.html

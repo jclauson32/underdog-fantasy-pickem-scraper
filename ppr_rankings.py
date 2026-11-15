@@ -7,13 +7,16 @@ a projected full-PPR score, ranks everyone, and writes a spreadsheet.
 
 Standard library only -- no pip installs needed:
 
-    python3 ppr_rankings.py                 # -> nfl_ppr_rankings.xlsx (+ .csv files)
+    python3 ppr_rankings.py                 # -> nfl_ppr_rankings.xlsx/.html (+ .csv files)
+    python3 ppr_rankings.py --open          # ...and open the interactive page in your browser
     python3 ppr_rankings.py -o week11.xlsx  # custom output name
 
 Sheets / files produced:
   * PPR Rankings  - one row per player, ranked by projected PPR points, with the
                     line and over/under odds for every stat used
   * All NFL Props - every NFL prop line Underdog has up, with both sides' odds
+  * nfl_ppr_rankings.html - interactive, self-contained page: filter by
+                    position/team/game, group by position/team/game, sort by any column
 """
 
 import argparse
@@ -24,6 +27,7 @@ import math
 import os
 import sys
 import urllib.request
+import webbrowser
 import zipfile
 from datetime import datetime
 from statistics import NormalDist
@@ -389,11 +393,23 @@ def write_xlsx(path, sheets):
             z.writestr(f"xl/worksheets/sheet{i}.xml", sheet_xml(rows))
 
 
+def write_html(path, rows):
+    """Self-contained interactive page (data embedded, no server needed)."""
+    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "rankings.html")
+    with open(template_path, encoding="utf-8") as f:
+        template = f.read()
+    payload = json.dumps({"generated": datetime.now().astimezone().isoformat(), "rows": rows})
+    payload = payload.replace("</", "<\\/")  # keep "</script>" out of the inline script
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(template.replace("/*__DATA__*/null", payload, 1))
+
+
 # --------------------------------------------------------------------------- #
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-o", "--output", default="nfl_ppr_rankings.xlsx", help="output .xlsx path")
     ap.add_argument("--no-csv", action="store_true", help="skip writing the CSV copies")
+    ap.add_argument("--open", action="store_true", help="open the interactive HTML page in your browser")
     args = ap.parse_args()
 
     print("Fetching Underdog lines...")
@@ -410,6 +426,9 @@ def main():
 
     write_xlsx(args.output, [("PPR Rankings", rankings), ("All NFL Props", flat)])
     print(f"Wrote {args.output}  ({len(rankings)} ranked players, {len(flat)} NFL props)")
+    html_path = os.path.splitext(args.output)[0] + ".html"
+    write_html(html_path, rankings)
+    print(f"Wrote {html_path}  (interactive: sort/group/filter)")
     if not args.no_csv:
         base = os.path.splitext(args.output)[0]
         write_csv(f"{base}.csv", rankings)
@@ -419,6 +438,9 @@ def main():
     print(f"\nTop 15 ({datetime.now():%Y-%m-%d %H:%M}):")
     for r in rankings[:15]:
         print(f"{r['Rank']:>3}. {r['Player']:<24} {r['Pos Rank']:<6} {r['Team']:<4} vs {r['Opp']:<4} {r['Proj PPR']:>6.2f}")
+
+    if args.open:
+        webbrowser.open("file://" + os.path.abspath(html_path))
 
 
 if __name__ == "__main__":
