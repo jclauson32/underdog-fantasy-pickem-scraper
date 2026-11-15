@@ -152,6 +152,28 @@ class FullRun(unittest.TestCase):
         self.assertEqual(self.sheet_names(), ["PPR Rankings", "Odds Comparison", "Underdog Props", "FantasyPros Projections"])
         self.assertNotIn("Pass Yds SL Line", self.read_csv()[0])
 
+    def test_only_if_kickoff_within(self):
+        flat = [{"Kickoff (UTC)": "2026-11-15T18:00:00Z"}, {"Kickoff (UTC)": "2026-11-15T21:25:00Z"},
+                {"Kickoff (UTC)": ""}]
+        at = lambda h, m=0: datetime(2026, 11, 15, h, m, tzinfo=timezone.utc)
+        self.assertEqual(ppr_rankings.kickoffs_within(flat, 75, at(17)), ["2026-11-15T18:00Z"])
+        self.assertEqual(ppr_rankings.kickoffs_within(flat, 75, at(16)), [])            # 120 min away
+        self.assertEqual(ppr_rankings.kickoffs_within(flat, 75, at(18, 5)), [])         # already started
+        self.assertEqual(ppr_rankings.next_kickoff(flat, at(18, 5)), "2026-11-15T21:25Z")
+        self.assertIsNone(ppr_rankings.next_kickoff(flat, at(22)))
+
+    def test_no_kickoff_soon_does_nothing(self):
+        argv = ["ppr_rankings.py", "-o", self.out, "--only-if-kickoff-within", "75"]
+        with mock.patch.object(ppr_rankings, "fetch", return_value=fixtures.underdog_data()), \
+                mock.patch.object(ppr_rankings, "kickoffs_within", return_value=[]), \
+                mock.patch.object(sleeper_scraper.SleeperScraper, "scrape") as sleeper_scrape, \
+                mock.patch("sys.argv", argv), contextlib.redirect_stdout(io.StringIO()) as log:
+            ppr_rankings.main()
+        self.assertIn("nothing to do", log.getvalue())
+        sleeper_scrape.assert_not_called()
+        self.assertEqual(history.load_snapshots(), [])
+        self.assertFalse(os.path.exists(self.out))
+
     def test_fantasypros_outage_does_not_stop_the_run(self):
         log = self.run_main(None, fantasypros_down=True)
         self.assertIn("couldn't load FantasyPros projections", log)

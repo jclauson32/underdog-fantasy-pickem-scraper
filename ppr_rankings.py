@@ -31,7 +31,7 @@ import sys
 import urllib.request
 import webbrowser
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from xml.sax.saxutils import escape
 
 from fantasypros_scraper import STATS as FANTASYPROS_STATS
@@ -194,6 +194,28 @@ def build_comparison(by_app, sleeper):
 
     rows.sort(key=lambda r: (r["Kickoff (UTC)"] or "~", r["Game"], r["Player"], r["Stat"]))
     return rows
+
+
+def _kickoffs(flat):
+    out = set()
+    for r in flat:
+        try:
+            out.add(datetime.fromisoformat(r["Kickoff (UTC)"].replace("Z", "+00:00")))
+        except (AttributeError, ValueError):
+            pass
+    return sorted(out)
+
+
+def kickoffs_within(flat, minutes, now=None):
+    """Kickoff times (UTC ISO) of NFL games with props that start within the next `minutes`."""
+    now = now or datetime.now(timezone.utc)
+    return [k.strftime("%Y-%m-%dT%H:%MZ") for k in _kickoffs(flat) if now < k <= now + timedelta(minutes=minutes)]
+
+
+def next_kickoff(flat, now=None):
+    now = now or datetime.now(timezone.utc)
+    later = [k for k in _kickoffs(flat) if k > now]
+    return later[0].strftime("%Y-%m-%dT%H:%MZ") if later else None
 
 
 def fmt_american(a):
@@ -513,6 +535,8 @@ def main():
     ap.add_argument("--open", action="store_true", help="open the interactive HTML page in your browser")
     ap.add_argument("--no-sleeper", action="store_true", help="skip pulling Sleeper lines")
     ap.add_argument("--no-fantasypros", action="store_true", help="skip pulling FantasyPros projections")
+    ap.add_argument("--only-if-kickoff-within", type=int, metavar="MINUTES",
+                    help="do nothing unless an NFL game kicks off within this many minutes (for hourly schedules)")
     ap.add_argument("--no-history", action="store_true",
                     help="don't save this run to history/snapshots (used by projected_vs_actual.py)")
     args = ap.parse_args()
@@ -526,6 +550,14 @@ def main():
     by_app, flat = collect_props(data)
     if not flat:
         sys.exit("No NFL props are posted on Underdog right now.")
+    if args.only_if_kickoff_within is not None:
+        upcoming = kickoffs_within(flat, args.only_if_kickoff_within)
+        if not upcoming:
+            nxt = next_kickoff(flat)
+            print(f"No NFL kickoff in the next {args.only_if_kickoff_within} minutes"
+                  f" (next: {nxt or 'none posted'}); nothing to do.")
+            return
+        print(f"Kickoff within {args.only_if_kickoff_within} minutes: {', '.join(upcoming)}")
     sleeper = None
     if not args.no_sleeper:  # Sleeper is optional: any failure warns and the run continues
         try:

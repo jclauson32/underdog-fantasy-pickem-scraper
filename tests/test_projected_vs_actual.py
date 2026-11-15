@@ -75,8 +75,12 @@ class Snapshots(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             taken = datetime(2026, 11, 15, 15, 50, 45, tzinfo=timezone.utc)
             path = history.save_snapshot([{"Player": "A"}], STATE, taken, root=tmp)
-            self.assertTrue(path.endswith("2026-11-15T15-50-45Z.json"))
-            snap = history.load_snapshots(root=tmp)[0]
+            self.assertTrue(path.endswith("2026-11-15T15-50-45Z.json.gz"))
+            with open(os.path.join(tmp, "snapshots", "2026-11-14T10-00-00Z.json"), "w") as f:   # older plain JSON
+                json.dump({"taken_at": "2026-11-14T10:00:00Z", "rows": []}, f)
+            self.assertEqual([s["taken_at"] for s in history.load_snapshots(root=tmp)],
+                             ["2026-11-14T10:00:00Z", "2026-11-15T15:50:45Z"])
+            snap = history.load_snapshots(root=tmp)[1]
             self.assertEqual((snap["taken_at"], snap["season"], snap["week"], snap["rows"]),
                              ("2026-11-15T15:50:45Z", "2026", 10, [{"Player": "A"}]))
 

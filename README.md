@@ -15,6 +15,7 @@ python3 ppr_rankings.py --no-fantasypros # skip FantasyPros
 python3 ppr_rankings.py -o week11.xlsx   # custom file name
 python3 ppr_rankings.py --no-csv         # skip the CSV copies
 python3 ppr_rankings.py --no-history     # don't save a snapshot
+python3 ppr_rankings.py --only-if-kickoff-within 75   # do nothing unless a game starts within 75 min
 python3 projected_vs_actual.py           # compare saved snapshots with actual results
 ```
 
@@ -74,9 +75,12 @@ player's last lines and projections before his kickoff. Once a week is final, ea
 column, "Actual fantasy points" becomes a Rank by option, and the **Projected vs Actual** tab shows the accuracy
 summary for that week or the season to date. The Odds Comparison tab is always the live, current lines.
 
-**Scheduled snapshots.** Claude cloud routines run before each game window: `scripts/pull_history.sh` (load the
-saved history), `python3 ppr_rankings.py`, `scripts/push_history.sh` (push new snapshots and results to the
-`history` branch; nothing is committed to `main`), then republish the page on claude.ai. To use the history
+**Scheduled snapshots.** Claude cloud routines check every hour, 7am-8pm Central, Thursday through Monday:
+`scripts/pull_history.sh` (load the saved history), `python3 ppr_rankings.py --only-if-kickoff-within 75` (does
+nothing unless a game kicks off within 75 minutes, so every game, including Thanksgiving, Saturday, Christmas
+and flexed games, gets a snapshot before kickoff), `scripts/push_history.sh` (push new snapshots and results to
+the `history` branch; nothing is committed to `main`), then republish the page on claude.ai. Snapshots are
+stored gzipped. To use the history
 locally:
 ```
 scripts/pull_history.sh
@@ -99,7 +103,7 @@ python3 projected_vs_actual.py
 Both sites' APIs are public but undocumented, so they can change without notice. If Sleeper is unreachable the
 script still runs without the Sleeper columns.
 
-**Tests**: `python3 -m unittest` runs 85 offline tests (odds conversions checked against hand calculations, parsing,
+**Tests**: `python3 -m unittest` runs 87 offline tests (odds conversions checked against hand calculations, parsing,
 name matching, rankings, the comparison, the file writers, and a full run with the network replaced by sample
 data in `tests/fixtures.py`).
 

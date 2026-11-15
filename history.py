@@ -2,13 +2,14 @@
 Local history for comparing what was projected (lines, odds, FantasyPros) with what actually happened.
 
     history/
-      snapshots/2026-11-15T14-25-31Z.json   one per ppr_rankings.py run: every player's lines, odds, FantasyPros values
+      snapshots/2026-11-15T14-25-31Z.json.gz  one per ppr_rankings.py run (gzipped JSON): every player's lines, odds, FantasyPros values
       results/2026_week10.json              actual stats for a completed week (projected_vs_actual.py)
 
 Weeks are worked out from each game's kickoff: NFL weeks run Wednesday-Tuesday from the season start date
 Sleeper reports (e.g. 2026-09-09), so Thursday through Monday night games of one week share a number.
 """
 
+import gzip
 import json
 import os
 from datetime import date, datetime, timedelta, timezone
@@ -61,9 +62,10 @@ def save_snapshot(rankings, state, taken_at=None, root=None):
         "week": state.get("week"),
         "rows": rankings,
     }
-    path = os.path.join(_dir("snapshots", root), taken_at.strftime("%Y-%m-%dT%H-%M-%SZ") + ".json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(snap, f)
+    # gzip: snapshots are ~1 MB of repetitive JSON; compressed they're ~10x smaller on the history branch
+    path = os.path.join(_dir("snapshots", root), taken_at.strftime("%Y-%m-%dT%H-%M-%SZ") + ".json.gz")
+    with gzip.open(path, "wt", encoding="utf-8") as f:
+        json.dump(snap, f, separators=(",", ":"))
     return path
 
 
@@ -71,8 +73,12 @@ def load_snapshots(root=None):
     folder = _dir("snapshots", root)
     snaps = []
     for name in sorted(os.listdir(folder)):
-        if name.endswith(".json"):
-            with open(os.path.join(folder, name), encoding="utf-8") as f:
+        path = os.path.join(folder, name)
+        if name.endswith(".json.gz"):
+            with gzip.open(path, "rt", encoding="utf-8") as f:
+                snaps.append(json.load(f))
+        elif name.endswith(".json"):                       # older, uncompressed snapshots
+            with open(path, encoding="utf-8") as f:
                 snaps.append(json.load(f))
     return snaps
 
