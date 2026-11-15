@@ -1,3 +1,35 @@
+# NFL PPR Rankings (with odds)
+
+`ppr_rankings.py` pulls every live NFL prop from Underdog Fantasy and builds a spreadsheet of
+players ranked by projected **full-PPR** fantasy points, with the line and over/under odds for each stat.
+
+No installs needed (Python 3 standard library only):
+
+```
+python3 ppr_rankings.py                  # -> nfl_ppr_rankings.xlsx, nfl_ppr_rankings.csv, nfl_ppr_rankings_all_props.csv
+python3 ppr_rankings.py -o week11.xlsx   # custom file name
+python3 ppr_rankings.py --no-csv         # xlsx only
+```
+
+**Sheets**
+- **PPR Rankings**: overall rank, positional rank (QB1, RB3, ...), team/opponent, kickoff, projected PPR,
+  expected stat values, anytime-TD probability, and line + over/under American odds for pass yds, pass TDs,
+  INTs, rush yds, receptions, rec yds, anytime TD, and Underdog's own Fantasy Points line.
+- **All NFL Props**: every NFL prop Underdog has posted (including quarter/half lines, defense, kickers)
+  with both sides' odds and the no-vig over probability.
+
+**How projections work**
+1. Each line's over/under odds are converted to a no-vig probability of the over.
+2. Count stats (receptions, TDs, pass TDs, INTs, fumbles) use the Poisson mean that matches that probability;
+   yardage stats shift the line by the odds-implied z-score.
+3. Scoring: 0.04/pass yd, 4/pass TD, -2/INT, 0.1/rush or rec yd, 1/reception, 6/rush-rec TD, -2/fumble lost.
+4. Missing rush yards are derived from Rush+Rec or Pass+Rush combo lines. If a player has no stat props,
+   Underdog's Fantasy Points line (half-PPR) + 0.5 x expected receptions is used instead (see `Proj Source`).
+
+Only players with lines currently posted show up, so run it close to kickoff for the fullest list.
+
+---
+
 # Underdog Fantasy Sports Scraper
 
 This project provides a Python script to scrape and process pickem data from Underdog Fantasy Sports and output the results to a CSV file.

@@ -1,0 +1,5 @@
+nfl_ppr_rankings*
+*.xlsx
+*.csv
+__pycache__/
+.venv/
